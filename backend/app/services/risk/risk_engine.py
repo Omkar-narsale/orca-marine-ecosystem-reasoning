@@ -7,10 +7,16 @@ from backend.app.services.risk.confidence import calculate_synthesis_confidence
 
 class MarineRiskEngine:
     """
-    Deterministic Marine Risk Scoring and Zone Classification Engine.
+    Deterministic Marine Risk Scoring and Zone Classification Engine (Phase 6).
     Formula:
       Physical Risk Score = w_wave * S_wave + w_wind * S_wind + w_warning * S_warning + w_current * S_current
-    Geofence Restriction operates as an operational override.
+    Geofence Restriction operates as a deterministic operational override.
+    
+    Safety Non-Negotiables:
+    - MISSING DATA != SAFE
+    - UNKNOWN DATA != SAFE
+    - FAILED WARNING CHECK != NO WARNING
+    - FAILED GEOFENCE CHECK != UNRESTRICTED
     """
     def evaluate_zone(
         self,
@@ -18,18 +24,19 @@ class MarineRiskEngine:
         zone_name: str,
         zone_coords: List[List[float]],
         records: List[NormalizedMarineRecord],
-        time_window: Optional[Dict[str, Any]] = None
+        time_window: Optional[Dict[str, Any]] = None,
+        is_warning_service_available: bool = True
     ) -> Dict[str, Any]:
         # Filter records by parameter
         wave_recs = [r for r in records if r.parameter == "significant_wave_height"]
         wind_recs = [r for r in records if r.parameter == "surface_wind_10m"]
-        warning_recs = [r for r in records if r.parameter == "marine_fishermen_warning"]
+        warning_recs = [r for r in records if r.parameter in ("marine_fishermen_warning", "marine_warning")]
         current_recs = [r for r in records if r.parameter == "surface_current"]
 
         # 1. Hazard Evaluation
         wave_hazard = hazard_engine.evaluate_wave_hazard(wave_recs)
         wind_hazard = hazard_engine.evaluate_wind_hazard(wind_recs)
-        warning_hazard = hazard_engine.evaluate_warning_hazard(warning_recs)
+        warning_hazard = hazard_engine.evaluate_warning_hazard(warning_recs, is_warning_service_available)
 
         # 2. Geofence Evaluation
         geofence_eval = geofence_engine.evaluate_zone_geofence(zone_id, zone_coords)
@@ -47,11 +54,17 @@ class MarineRiskEngine:
 
         # Check for missing critical safety data
         is_restricted = geofence_eval["restricted"]
+        geofence_unverified = geofence_eval.get("insufficient_data", False)
         wave_missing = wave_hazard["status"] == "MISSING_DATA"
         wind_missing = wind_hazard["status"] == "MISSING_DATA"
+        warning_unverified = warning_hazard["status"] == "INSUFFICIENT_DATA"
 
         # 4. Classification
-        if is_restricted:
+        if geofence_unverified:
+            classification = "INSUFFICIENT_DATA"
+            status_label = "INSUFFICIENT DATA"
+            risk_score = 50
+        elif is_restricted:
             classification = "RESTRICTED"
             status_label = "RESTRICTED"
             risk_score = max(70, int(round(raw_score)))
@@ -61,6 +74,10 @@ class MarineRiskEngine:
             risk_score = 50
         elif wave_missing:
             # Critical safety wave information is missing - never assume safe
+            classification = "INSUFFICIENT_DATA"
+            status_label = "INSUFFICIENT DATA"
+            risk_score = 50
+        elif warning_unverified:
             classification = "INSUFFICIENT_DATA"
             status_label = "INSUFFICIENT DATA"
             risk_score = 50
@@ -99,6 +116,18 @@ class MarineRiskEngine:
                 "valid_time": wave_hazard.get("valid_time", "Tomorrow 06:00 IST"),
                 "data_type": "forecast"
             })
+        elif wave_missing:
+            factors.append({
+                "parameter": "significant_wave_height",
+                "label": "Wave Height",
+                "value": "Unavailable",
+                "severity": "UNKNOWN",
+                "description": "Critical wave safety telemetry is unavailable.",
+                "source": "INCOIS",
+                "source_url": "https://incois.gov.in",
+                "valid_time": "Forecast Horizon",
+                "data_type": "unknown"
+            })
 
         if wind_hazard["status"] == "AVAILABLE":
             factors.append({
@@ -126,7 +155,7 @@ class MarineRiskEngine:
                 "data_type": "warning"
             })
 
-        if is_restricted:
+        if is_restricted and geofence_eval.get("intersections"):
             inter = geofence_eval["intersections"][0]
             factors.append({
                 "parameter": "geofence_restriction",

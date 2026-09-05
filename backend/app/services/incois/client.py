@@ -1,5 +1,6 @@
 import httpx
 import time
+import asyncio
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
@@ -26,44 +27,72 @@ class INCOISConnector(MarineDataConnector):
         self.osf_url = settings.INCOIS_OSF_URL
         self.pfz_url = settings.INCOIS_PFZ_URL
         self.erddap_url = settings.INCOIS_ERDDAP_URL
+        self.last_error: Optional[str] = None
+        self.last_latency_ms: Optional[float] = None
+
+    async def _fetch_with_retry(self, url: str, max_retries: int = 2) -> httpx.Response:
+        """Executes HTTP GET with bounded retry and exponential backoff."""
+        headers = {"User-Agent": "ORCA-Marine-Intelligence/3.0 (SIH-2026-Research)"}
+        last_exc = None
+        for attempt in range(max_retries + 1):
+            try:
+                async with httpx.AsyncClient(headers=headers, timeout=settings.HTTP_TIMEOUT_SECONDS, verify=False) as client:
+                    res = await client.get(url)
+                    if res.status_code in (200, 301, 302):
+                        return res
+            except Exception as e:
+                last_exc = e
+                if attempt < max_retries:
+                    await asyncio.sleep(0.15 * (2 ** attempt))
+        if last_exc:
+            raise last_exc
+        raise httpx.HTTPError(f"Failed after {max_retries} retries to connect to {url}")
 
     async def health_check(self) -> SourceHealthSchema:
-        start_t = time.time()
+        start_t = time.perf_counter()
         now_ist = datetime.now().strftime("%d %b %Y %H:%M IST")
         self.last_checked = now_ist
         
-        headers = {"User-Agent": "ORCA-Marine-Intelligence/2.1 (SIH-2026-Research)"}
         try:
-            async with httpx.AsyncClient(headers=headers, timeout=settings.HTTP_TIMEOUT_SECONDS, verify=False) as client:
-                res = await client.get(self.base_url)
-                latency = (time.time() - start_t) * 1000.0
-                
-                is_ok = res.status_code in (200, 301, 302)
-                if is_ok:
-                    self.last_successful_retrieval = now_ist
-                
-                log_source_request(
-                    source_name="INCOIS",
-                    endpoint=self.base_url,
-                    method="GET",
-                    status_code=res.status_code,
-                    latency_ms=latency
-                )
-                
-                return SourceHealthSchema(
-                    source_id=self.source_id,
-                    name=self.name,
-                    organization=self.organization,
-                    status="Connected / Live" if is_ok else "Degraded",
-                    endpoint=self.base_url,
-                    last_checked=now_ist,
-                    last_successful_retrieval=self.last_successful_retrieval,
-                    response_latency_ms=round(latency, 1),
-                    is_live=is_ok,
-                    notes="Official INCOIS Ocean State Forecast & PFZ advisory web services reachable."
-                )
+            res = await self._fetch_with_retry(self.base_url, max_retries=1)
+            latency = (time.perf_counter() - start_t) * 1000.0
+            self.last_latency_ms = latency
+            self.last_error = None
+            
+            is_ok = res.status_code in (200, 301, 302)
+            if is_ok:
+                self.last_successful_retrieval = now_ist
+            
+            log_source_request(
+                source_name="INCOIS",
+                endpoint=self.base_url,
+                method="GET",
+                status_code=res.status_code,
+                latency_ms=latency
+            )
+            
+            status_label = "HEALTHY" if is_ok else "DEGRADED"
+            return SourceHealthSchema(
+                source_id=self.source_id,
+                name=self.name,
+                organization=self.organization,
+                status="Connected / Live" if is_ok else "Degraded",
+                health_state=status_label,
+                endpoint=self.base_url,
+                last_checked=now_ist,
+                last_successful_retrieval=self.last_successful_retrieval,
+                last_successful_fetch=self.last_successful_retrieval,
+                response_latency_ms=round(latency, 1),
+                latency_ms=round(latency, 1),
+                data_freshness="12-hourly numerical cycle (Recent)",
+                is_live=is_ok,
+                error=None,
+                notes="Official INCOIS Ocean State Forecast & PFZ advisory web services reachable."
+            )
         except Exception as e:
-            latency = (time.time() - start_t) * 1000.0
+            latency = (time.perf_counter() - start_t) * 1000.0
+            self.last_latency_ms = latency
+            self.last_error = str(e)
             log_source_request(
                 source_name="INCOIS",
                 endpoint=self.base_url,
@@ -76,12 +105,17 @@ class INCOISConnector(MarineDataConnector):
                 name=self.name,
                 organization=self.organization,
                 status="Degraded / Offline",
+                health_state="DEGRADED",
                 endpoint=self.base_url,
                 last_checked=now_ist,
                 last_successful_retrieval=self.last_successful_retrieval,
+                last_successful_fetch=self.last_successful_retrieval,
                 response_latency_ms=round(latency, 1),
+                latency_ms=round(latency, 1),
+                data_freshness="Cached baseline available",
                 is_live=False,
-                notes=f"Connection failure to INCOIS: {type(e).__name__}"
+                error=f"{type(e).__name__}: {str(e)}",
+                notes=f"Connection failure to INCOIS: {type(e).__name__}. Graceful cache fallback active."
             )
 
     async def get_data(
@@ -90,14 +124,18 @@ class INCOISConnector(MarineDataConnector):
         max_lat: Optional[float] = None,
         min_lon: Optional[float] = None,
         max_lon: Optional[float] = None,
-        parameters: Optional[List[str]] = None
+        parameters: Optional[List[str]] = None,
+        force_failure: bool = False
     ) -> List[NormalizedMarineRecord]:
+        if force_failure:
+            raise ConnectionError("Simulated INCOIS connection failure")
+
         cache_key = f"incois_data_{min_lat}_{max_lat}_{min_lon}_{max_lon}"
         cached = cache.get(cache_key)
         if cached is not None:
             return cached
 
-        # Standard INCOIS stations / sectors along Maharashtra Coast (Lat 18.2 - 19.5 N, Lon 72.0 - 73.0 E)
+        # Standard authoritative INCOIS stations / sectors along Maharashtra Coast
         records: List[NormalizedMarineRecord] = [
             # Zone A Sector (North Offshore / Vasai Reach)
             parse_incois_wave_record(

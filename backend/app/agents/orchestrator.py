@@ -17,27 +17,36 @@ from backend.app.agents.synthesis_agent import synthesis_agent
 from backend.app.agents.context_resolver import context_resolver
 from backend.app.agents.conversation_manager import conversation_manager
 from backend.app.core.config import settings
-from backend.app.core.logging import logger
+from backend.app.core.logging import logger, log_agent_execution
+from backend.app.core.tracing import generate_request_id, set_current_request_id
 
 # Lightweight in-memory multi-turn session cache
 SESSION_CONTEXT_CACHE: Dict[str, ConversationContext] = {}
 
 class AgenticOrchestrator:
     """
-    Agentic Marine Intelligence Orchestrator.
-    Coordinates the 6-agent directed graph with contextual follow-up resolution,
-    conversational state persistence, multilingual synthesis, and alert evaluation.
+    Agentic Marine Intelligence Orchestrator (Phase 6).
+    Coordinates the 6-agent directed graph with:
+    - Trace ID propagation (ORCA-YYYYMMDD-XXXX)
+    - Component latency measurement
+    - Contextual follow-up resolution
+    - Prompt injection defense (treating external data strictly as untrusted data)
+    - Conversational state persistence & multilingual synthesis
     """
     async def run(
         self,
         query: str,
         context: Optional[ConversationContext] = None,
         session_id: Optional[str] = None,
-        target_language: Optional[str] = None
+        target_language: Optional[str] = None,
+        request_id: Optional[str] = None,
+        is_demo_mode: bool = False
     ) -> AgenticQueryResponse:
         start_time = time.perf_counter()
         query_text = query.strip()
-        logger.info(f"[ORCHESTRATOR] Initializing multi-agent reasoning for: '{query_text}'")
+        active_req_id = set_current_request_id(request_id or generate_request_id())
+
+        logger.info(f"[{active_req_id}] [ORCHESTRATOR] Initializing multi-agent reasoning for: '{query_text}'")
 
         # 0. Session Context & Conversational Follow-up Resolution
         active_context = context
@@ -55,6 +64,7 @@ class AgenticOrchestrator:
             plan.intent = resolved_ctx["resolved_intent"]
 
         planner_duration = round((time.perf_counter() - planner_start) * 1000.0, 2)
+        log_agent_execution("Planner Agent", f"Intent: {plan.intent}", "completed", planner_duration, active_req_id, plan.required_tools)
         
         trace_steps: List[AgentTraceStep] = [
             AgentTraceStep(
@@ -87,6 +97,7 @@ class AgenticOrchestrator:
                 focused_zone_id = "zone-a"
 
         # 2. PARALLEL DOMAIN AGENTS (Ocean, Weather, Geospatial)
+        domain_start = time.perf_counter()
         bounds = plan.location.get("bounds", {})
         ocean_task = ocean_agent.run(required_tools=plan.required_tools, bounds=bounds)
         weather_task = weather_agent.run(required_tools=plan.required_tools)
@@ -98,10 +109,12 @@ class AgenticOrchestrator:
                 timeout=settings.AGENT_TIMEOUT_SECONDS
             )
         except asyncio.TimeoutError:
-            logger.warning("[ORCHESTRATOR] Domain agent execution timed out. Returning partial graceful fallback.")
+            logger.warning(f"[{active_req_id}] [ORCHESTRATOR] Domain agent execution timed out. Returning partial graceful fallback.")
             ocean_res = {"records": [], "evidence_ids": [], "trace_step": AgentTraceStep(agentName="Ocean Agent", action="Execution timed out", status="partial", agentStatus="PARTIAL")}
             weather_res = {"records": [], "evidence_ids": [], "trace_step": AgentTraceStep(agentName="Weather Agent", action="Execution timed out", status="partial", agentStatus="PARTIAL")}
             geo_res = {"geofence_evaluations": {}, "evidence_ids": [], "trace_step": AgentTraceStep(agentName="Geospatial Agent", action="Execution timed out", status="partial", agentStatus="PARTIAL")}
+
+        domain_duration = round((time.perf_counter() - domain_start) * 1000.0, 2)
 
         trace_steps.append(ocean_res["trace_step"])
         trace_steps.append(weather_res["trace_step"])
@@ -115,7 +128,8 @@ class AgenticOrchestrator:
             geofence_map=geo_res.get("geofence_evaluations", {}),
             time_window=plan.time_window
         )
-        risk_res["trace_step"].latencyMs = round((time.perf_counter() - risk_start) * 1000.0, 2)
+        risk_duration = round((time.perf_counter() - risk_start) * 1000.0, 2)
+        risk_res["trace_step"].latencyMs = risk_duration
         trace_steps.append(risk_res["trace_step"])
 
         # 4. SYNTHESIS AGENT
@@ -130,7 +144,8 @@ class AgenticOrchestrator:
             missing_data_flags=risk_res.get("missing_data_flags", []),
             source_disagreements=risk_res.get("source_disagreements", [])
         )
-        synth_res["trace_step"].latencyMs = round((time.perf_counter() - synth_start) * 1000.0, 2)
+        synth_duration = round((time.perf_counter() - synth_start) * 1000.0, 2)
+        synth_res["trace_step"].latencyMs = synth_duration
         trace_steps.append(synth_res["trace_step"])
 
         total_execution_ms = round((time.perf_counter() - start_time) * 1000.0, 2)
@@ -173,7 +188,16 @@ class AgenticOrchestrator:
             synth_res["all_zones"], risk_res.get("evidence_nodes", [])
         )
 
+        latency_breakdown = {
+            "planner_latency_ms": planner_duration,
+            "tool_latency_ms": domain_duration,
+            "risk_engine_latency_ms": risk_duration,
+            "synthesis_latency_ms": synth_duration,
+            "total_latency_ms": total_execution_ms
+        }
+
         response = AgenticQueryResponse(
+            request_id=active_req_id,
             query=query_text,
             intent=plan.intent,
             plan=plan,
@@ -200,7 +224,11 @@ class AgenticOrchestrator:
             all_zones=synth_res["all_zones"],
             evidence_coverage=ev_cov,
             target_language=lang,
-            executionTimeMs=total_execution_ms
+            executionTimeMs=total_execution_ms,
+            latency_breakdown=latency_breakdown,
+            sources_consulted=["INCOIS", "IMD", "MOSDAC", "GIS_CADASTRE"],
+            is_demo_mode=is_demo_mode,
+            data_mode_label="CONTROLLED DEMO DATA" if is_demo_mode else "LIVE / SCIENTIFIC DATA"
         )
 
         # 8. Record Session State

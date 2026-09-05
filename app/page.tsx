@@ -12,6 +12,7 @@ import { ConfidenceScore } from '@/components/ConfidenceScore';
 import { DataFreshness } from '@/components/DataFreshness';
 import { FooterBar } from '@/components/FooterBar';
 import { ArchitectureModal } from '@/components/ArchitectureModal';
+import { SystemStatusModal } from '@/components/SystemStatusModal';
 import EvidenceDrawer from '@/components/EvidenceDrawer';
 import MarineBriefModal from '@/components/MarineBriefModal';
 import SafetyAlertsModal from '@/components/SafetyAlertsModal';
@@ -69,9 +70,11 @@ export default function DashboardPage() {
   const [currentQuery, setCurrentQuery] = useState<string>('Which fishing zones should be avoided tomorrow?');
   const [sessionId] = useState<string>(() => `orca_session_${Date.now()}`);
   const [language, setLanguage] = useState<string>('en');
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
 
   // Modal & Drawer State
   const [isArchModalOpen, setIsArchModalOpen] = useState<boolean>(false);
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState<boolean>(false);
   const [isEvidenceDrawerOpen, setIsEvidenceDrawerOpen] = useState<boolean>(false);
   const [activeEvidenceItem, setActiveEvidenceItem] = useState<any>(null);
   const [isAlertsModalOpen, setIsAlertsModalOpen] = useState<boolean>(false);
@@ -81,7 +84,7 @@ export default function DashboardPage() {
   const [marineBrief, setMarineBrief] = useState<MarineBriefReport | null>(null);
   const [isGeneratingBrief, setIsGeneratingBrief] = useState<boolean>(false);
 
-  // Phase 5 Decision & Simulation Modals
+  // Phase 5 & 6 Decision, Observability & Simulation Modals
   const [isWhatIfModalOpen, setIsWhatIfModalOpen] = useState<boolean>(false);
   const [isConfidenceModalOpen, setIsConfidenceModalOpen] = useState<boolean>(false);
   const [isResearchModalOpen, setIsResearchModalOpen] = useState<boolean>(false);
@@ -116,7 +119,7 @@ export default function DashboardPage() {
           setUnreadAlertCount(loadedAlerts.unread_count || 0);
         }
       } catch (e) {
-        // Fallback to local verified registry
+        setIsDemoMode(true);
       }
     }
 
@@ -131,7 +134,7 @@ export default function DashboardPage() {
     const activeLang = targetLang || language;
 
     try {
-      const result = await analyzeMarineQuery(query, sessionId, activeLang);
+      const result = await analyzeMarineQuery(query, sessionId, activeLang, undefined, isDemoMode);
       setAnalysisResult(result);
 
       if (result.all_zones && result.all_zones.length > 0) {
@@ -229,6 +232,8 @@ export default function DashboardPage() {
         onOpenMarineBrief={handleGenerateBrief}
         onOpenWhatIf={() => setIsWhatIfModalOpen(true)}
         onOpenResearch={() => setIsResearchModalOpen(true)}
+        onOpenSystemStatus={() => setIsStatusModalOpen(true)}
+        isDemoMode={isDemoMode}
       />
 
       {/* Main Layout Container */}
@@ -327,6 +332,12 @@ export default function DashboardPage() {
       <ArchitectureModal
         isOpen={isArchModalOpen}
         onClose={() => setIsArchModalOpen(false)}
+      />
+
+      {/* System Status Observability Modal (Phase 6) */}
+      <SystemStatusModal
+        isOpen={isStatusModalOpen}
+        onClose={() => setIsStatusModalOpen(false)}
       />
 
       {/* Evidence Graph Node Drawer */}

@@ -24,11 +24,16 @@ class GeospatialService(MarineDataConnector):
             name=self.name,
             organization=self.organization,
             status="Static Baseline",
+            health_state="HEALTHY",
             endpoint=self.base_url,
             last_checked=now_ist,
             last_successful_retrieval=now_ist,
+            last_successful_fetch=now_ist,
             response_latency_ms=1.2,
+            latency_ms=1.2,
+            data_freshness="Static Cadastre (Rev 2026.1)",
             is_live=True,
+            error=None,
             notes="National Maritime Domain Cadastre & Naval Security Envelopes (Rev 2026.1 baseline verified)."
         )
 
@@ -53,6 +58,7 @@ class GeospatialService(MarineDataConnector):
                 latitude=18.97,
                 longitude=72.64,
                 timestamp=now_utc,
+                observation_time=now_utc,
                 data_type="static",
                 valid_time="Static Baseline · Verified Maritime Cadastre (Rev 2026.1)",
                 retrieved_at=now_ist,

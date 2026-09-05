@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: orca-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - LLM_PROVIDER=deterministic_fallback
+      - HTTP_TIMEOUT_SECONDS=10.0
+      - WEATHER_CACHE_TTL_SECONDS=600
+      - OCEAN_FORECAST_CACHE_TTL_SECONDS=1800
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    image: node:20-alpine
+    container_name: orca-frontend
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_BACKEND_URL=http://backend:8000/api
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    command: sh -c "npm install && npm run build && npm run start"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

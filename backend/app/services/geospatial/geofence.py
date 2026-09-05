@@ -71,6 +71,7 @@ class GeofenceEngine:
     """
     Deterministic Geofence & Spatial Restriction Engine.
     Performs spatial polygon intersection between ORCA candidate zones and verified restricted zones.
+    Fail-Safe invariant: FAILED GEOFENCE CHECK != UNRESTRICTED.
     """
     def __init__(self, geofences: Optional[List[Dict[str, Any]]] = None):
         self.geofences = geofences or AUTHORITATIVE_GEOFENCES
@@ -88,19 +89,31 @@ class GeofenceEngine:
         Evaluates spatial intersection for a given zone polygon.
         Returns:
             restricted: bool
-            status: 'NO_RESTRICTION' | 'PARTIAL_INTERSECTION' | 'FULL_INTERSECTION'
+            status: 'NO_RESTRICTION' | 'PARTIAL_INTERSECTION' | 'FULL_INTERSECTION' | 'UNKNOWN'
             intersections: List of matching restriction objects
         """
+        if not zone_coords or len(zone_coords) < 3:
+            return {
+                "zone_id": zone_id,
+                "restricted": True, # Fail-safe: Cannot verify boundaries -> flag for restricted/insufficient data
+                "status": "UNKNOWN",
+                "insufficient_data": True,
+                "overlap_percentage": 0.0,
+                "intersections": [],
+                "error": "Insufficient or invalid zone coordinates. Boundary clearance cannot be certified."
+            }
+
         try:
             zone_poly = create_polygon_from_coords(zone_coords)
         except Exception as e:
             return {
                 "zone_id": zone_id,
-                "restricted": False,
+                "restricted": True, # Fail-safe
                 "status": "UNKNOWN",
+                "insufficient_data": True,
                 "overlap_percentage": 0.0,
                 "intersections": [],
-                "error": f"Invalid zone coordinates: {e}"
+                "error": f"Invalid zone coordinates: {e}. Boundary clearance unverified."
             }
 
         matching_intersections = []
@@ -137,6 +150,7 @@ class GeofenceEngine:
             "zone_id": zone_id,
             "restricted": is_restricted,
             "status": highest_status,
+            "insufficient_data": False,
             "max_overlap_percentage": max_overlap_pct,
             "intersections": matching_intersections
         }

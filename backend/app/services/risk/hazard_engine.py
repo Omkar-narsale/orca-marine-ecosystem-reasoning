@@ -4,8 +4,9 @@ from backend.app.services.risk.thresholds import MARINE_THRESHOLDS
 
 class MarineHazardEngine:
     """
-    Deterministic Marine Hazard Detection Engine.
+    Deterministic Marine Hazard Detection Engine (Phase 6).
     Inspects available wave, wind, warning, and current records and computes parameter hazard levels.
+    Enforces fail-safe safety: Missing data or failed warning checks trigger explicit INSUFFICIENT_DATA / UNKNOWN.
     """
     def evaluate_wave_hazard(self, wave_records: List[NormalizedMarineRecord]) -> Dict[str, Any]:
         if not wave_records:
@@ -16,10 +17,22 @@ class MarineHazardEngine:
                 "value": None,
                 "unit": "m",
                 "status": "MISSING_DATA",
-                "description": "Wave forecast data unavailable for sector."
+                "description": "Wave forecast data unavailable for sector. Safe passage cannot be determined."
             }
 
-        max_wave_rec = max(wave_records, key=lambda r: float(r.value) if isinstance(r.value, (int, float)) else 0.0)
+        valid_wave_recs = [r for r in wave_records if isinstance(r.value, (int, float))]
+        if not valid_wave_recs:
+            return {
+                "parameter": "significant_wave_height",
+                "severity": "UNKNOWN",
+                "score_contribution": 0.0,
+                "value": None,
+                "unit": "m",
+                "status": "MISSING_DATA",
+                "description": "No valid numerical wave height values found."
+            }
+
+        max_wave_rec = max(valid_wave_recs, key=lambda r: float(r.value))
         h_val = float(max_wave_rec.value)
         th = MARINE_THRESHOLDS["significant_wave_height"]["thresholds"]
 
@@ -29,7 +42,6 @@ class MarineHazardEngine:
             desc = f"Critical rough sea state: Significant wave height {h_val}m exceeds 4.0m danger threshold."
         elif h_val >= th["high"]:
             severity = "HIGH"
-            # Linear interpolation 2.0m to 4.0m -> 70 to 95
             sub_score = 70.0 + (h_val - th["moderate"]) / (th["critical"] - th["moderate"]) * 25.0
             desc = f"Elevated wave hazard: Swell reaches {h_val}m exceeding 2.0m craft limit."
         elif h_val >= th["moderate"]:
@@ -67,7 +79,19 @@ class MarineHazardEngine:
                 "description": "Wind forecast data unavailable for sector."
             }
 
-        max_wind_rec = max(wind_records, key=lambda r: float(r.value) if isinstance(r.value, (int, float)) else 0.0)
+        valid_wind_recs = [r for r in wind_records if isinstance(r.value, (int, float))]
+        if not valid_wind_recs:
+            return {
+                "parameter": "surface_wind_10m",
+                "severity": "UNKNOWN",
+                "score_contribution": 0.0,
+                "value": None,
+                "unit": "kt",
+                "status": "MISSING_DATA",
+                "description": "No valid numerical wind telemetry found."
+            }
+
+        max_wind_rec = max(valid_wind_recs, key=lambda r: float(r.value))
         w_val = float(max_wind_rec.value)
         th = MARINE_THRESHOLDS["surface_wind_10m"]["thresholds"]
 
@@ -102,7 +126,21 @@ class MarineHazardEngine:
             "data_type": max_wind_rec.data_type
         }
 
-    def evaluate_warning_hazard(self, warning_records: List[NormalizedMarineRecord]) -> Dict[str, Any]:
+    def evaluate_warning_hazard(
+        self,
+        warning_records: List[NormalizedMarineRecord],
+        is_warning_service_available: bool = True
+    ) -> Dict[str, Any]:
+        if not is_warning_service_available:
+            return {
+                "parameter": "marine_warning",
+                "severity": "UNKNOWN",
+                "score_contribution": 50.0,
+                "value": "Warning Data Unavailable",
+                "status": "INSUFFICIENT_DATA",
+                "description": "Marine warning feed unavailable. Cannot certify zone is warning-free."
+            }
+
         if not warning_records:
             return {
                 "parameter": "marine_warning",

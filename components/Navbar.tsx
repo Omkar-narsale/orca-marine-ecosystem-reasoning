@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Compass, User, Cpu, Bell, Globe, FileText } from 'lucide-react';
+import { Compass, User, Cpu, Bell, Globe, FileText, Activity } from 'lucide-react';
 import { I18N_STRINGS, LanguageCode } from '@/lib/i18n';
 
 interface NavbarProps {
@@ -11,6 +11,8 @@ interface NavbarProps {
   onOpenMarineBrief?: () => void;
   onOpenWhatIf?: () => void;
   onOpenResearch?: () => void;
+  onOpenSystemStatus?: () => void;
+  isDemoMode?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -21,7 +23,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAlerts,
   onOpenMarineBrief,
   onOpenWhatIf,
-  onOpenResearch
+  onOpenResearch,
+  onOpenSystemStatus,
+  isDemoMode = false
 }) => {
   const [currentTime, setCurrentTime] = useState<string>('');
   const langKey = (language as LanguageCode) || 'en';
@@ -67,6 +71,15 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="text-xs font-semibold text-slate-600 pl-2 border-l border-slate-300">
                 Decision Intelligence
               </span>
+              {/* Trust / Data Status Badge */}
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-tight ${
+                isDemoMode 
+                  ? 'bg-amber-100 text-amber-900 border border-amber-300' 
+                  : 'bg-emerald-50 text-emerald-800 border border-emerald-300'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isDemoMode ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
+                <span>{isDemoMode ? 'CONTROLLED DEMO DATA' : 'LIVE SCIENTIFIC DATA'}</span>
+              </span>
             </div>
             <p className="text-[11px] text-slate-500 font-normal leading-none mt-0.5">
               {t.brandSubtitle}
@@ -76,6 +89,19 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Center: System Status, What-If, Research, Alerts */}
         <div className="flex items-center gap-2">
+          {/* Compact System Status Trigger */}
+          {onOpenSystemStatus && (
+            <button
+              onClick={onOpenSystemStatus}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 transition-colors shadow-xs"
+              title="View Real-Time System Health & Source Status"
+            >
+              <Activity className="w-3.5 h-3.5 text-teal-600" />
+              <span>Status</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            </button>
+          )}
+
           {/* What-If Scenario Trigger */}
           {onOpenWhatIf && (
             <button

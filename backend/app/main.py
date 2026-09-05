@@ -22,14 +22,14 @@ from backend.app.api.routes.evaluation import router as evaluation_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Initializing ORCA Marine Intelligence FastAPI Backend v5.0.0 (Decision Intelligence, Scenario Reasoning, Uncertainty & Research Evaluation)...")
+    logger.info("Initializing ORCA Marine Intelligence FastAPI Backend v6.0.0 (Production Hardened, Observability, SIH Demo Readiness)...")
     yield
     logger.info("Shutting down ORCA Marine Intelligence Backend...")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    version="5.0.0",
-    description="Scenario Reasoning, Uncertainty Quantification, Decision Intelligence, and Research Evaluation for ORCA (SIH 2026 Phase 5).",
+    version="6.0.0",
+    description="Production Hardened Multi-Agent Marine Intelligence, Scenario Reasoning, Uncertainty Quantification, and Observability for ORCA (SIH 2026 Phase 6).",
     lifespan=lifespan
 )
 
@@ -42,7 +42,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API Routers
+# Root-level health routes (/health, /health/ready, /health/sources)
+app.include_router(health_router)
+
+# Include API Routers with prefix
 app.include_router(decision_router)
 app.include_router(scenario_router)
 app.include_router(uncertainty_router)
@@ -63,10 +66,13 @@ app.include_router(health_router, prefix=settings.API_V1_STR)
 async def root():
     return {
         "service": "ORCA Marine Intelligence API",
-        "phase": "Phase 5 Decision Intelligence, Scenario Reasoning, Uncertainty & Research Evaluation",
-        "version": "5.0.0",
+        "phase": "Phase 6 Production Hardening, Observability & SIH Demo Readiness",
+        "version": "6.0.0",
         "status": "online",
         "docs": "/docs",
+        "health": "/health",
+        "readiness": "/health/ready",
+        "sources_health": "/health/sources",
         "agents": [
             "Planner Agent",
             "Ocean Agent",

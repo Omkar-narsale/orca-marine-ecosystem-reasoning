@@ -1,6 +1,7 @@
 from typing import Optional, List, Dict, Any, Literal
 from pydantic import BaseModel, Field
 from datetime import datetime
+from backend.app.core.tracing import generate_request_id
 
 AgentStatusLiteral = Literal["QUEUED", "RUNNING", "COMPLETE", "PARTIAL", "FAILED"]
 IntentLiteral = Literal[
@@ -34,7 +35,7 @@ class EvidenceGraphItem(BaseModel):
     parameter: str = Field(...)
     value: Any = Field(...)
     unit: str = Field(default="")
-    data_type: Literal["forecast", "observation", "advisory", "warning", "static"]
+    data_type: Literal["forecast", "observation", "advisory", "warning", "static", "cached", "unknown", "FORECAST", "OBSERVATION", "ADVISORY", "WARNING", "STATIC", "CACHED", "UNKNOWN"]
     valid_time: str
     retrieved_at: str
     source_url: str
@@ -69,7 +70,9 @@ class ConversationContext(BaseModel):
 class AgenticQueryRequest(BaseModel):
     query: str = Field(..., description="Natural language marine query")
     context: Optional[ConversationContext] = None
+    request_id: Optional[str] = None
     stream_trace: bool = Field(default=False)
+    is_demo_mode: bool = Field(default=False)
 
 class FinalDecisionBlock(BaseModel):
     summary: str
@@ -77,6 +80,7 @@ class FinalDecisionBlock(BaseModel):
     candidate_zones: List[Dict[str, Any]] = Field(default_factory=list)
 
 class AgenticQueryResponse(BaseModel):
+    request_id: str = Field(default_factory=generate_request_id, description="Trace ID: ORCA-YYYYMMDD-XXXX")
     query: str
     intent: str
     plan: PlannerPlan
@@ -100,3 +104,7 @@ class AgenticQueryResponse(BaseModel):
     evidence_coverage: float = Field(default=0.95, description="Factual evidence coverage metric")
     target_language: str = Field(default="en", description="Output response language")
     executionTimeMs: float
+    latency_breakdown: Dict[str, float] = Field(default_factory=dict, description="Component latencies in ms")
+    sources_consulted: List[str] = Field(default_factory=lambda: ["INCOIS", "IMD", "MOSDAC", "GIS_CADASTRE"])
+    is_demo_mode: bool = Field(default=False)
+    data_mode_label: str = Field(default="LIVE / SCIENTIFIC DATA")

@@ -1,7 +1,10 @@
-"""Candidate Zone Ranking Engine for ORCA Phase 5
+"""Candidate Zone Ranking Engine for ORCA Phase 6
 ===============================================
 Ranks evaluated marine zones into primary recommendations, alternative candidates,
 and excluded zones based on deterministic suitability, risk, and geospatial constraints.
+Invariants:
+- MISSING DATA != SAFE
+- INSUFFICIENT_DATA zones are never recommended as safe candidates
 """
 
 from typing import Dict, Any, List, Optional
@@ -18,7 +21,7 @@ class RankedZoneItem(BaseModel):
     operational_status: str = Field(..., description="CANDIDATE, ALTERNATIVE, or EXCLUDED")
     suitability_score: float = Field(..., description="Deterministic suitability score (0-100)")
     risk_score: float = Field(..., description="Deterministic operational risk score (0-100)")
-    risk_level: str = Field(..., description="LOW, MEDIUM, HIGH, CRITICAL")
+    risk_level: str = Field(..., description="LOW, MEDIUM, HIGH, CRITICAL, INSUFFICIENT_DATA")
     confidence_level: str = Field(default="Medium", description="High, Medium, Low")
     uncertainty_level: str = Field(default="Moderate", description="Low, Moderate, High")
     why_this_zone: str = Field(..., description="Scientific trade-off rationale")
@@ -39,7 +42,7 @@ class RankedCandidatesResponse(BaseModel):
 
 class CandidateZoneRankingEngine:
     """
-    Candidate Zone Ranking Engine for ORCA Phase 5.
+    Candidate Zone Ranking Engine for ORCA Phase 6.
     Ranks evaluated marine zones into primary recommendations, alternative candidates, and excluded zones.
     """
     def rank_zones(self, evaluated_zones: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
@@ -85,11 +88,13 @@ class CandidateZoneRankingEngine:
             zone_name = z.get("name", zone_code)
             risk_score = float(z.get("riskScore", z.get("risk_score", 50.0)))
             status = z.get("status", "caution")
+            classification = z.get("classification", "").upper()
 
             wave_h = z.get("wave_hazard", {}).get("value", 1.5)
             wind_h = z.get("wind_hazard", {}).get("value", 15.0)
             is_restr = bool(z.get("geofence", {}).get("restricted", False) or z.get("conditions", {}).get("isRestricted", False))
             has_warn = bool(z.get("warning_hazard", {}).get("severity") == "HIGH" or z.get("conditions", {}).get("marineWarning", False))
+            is_insufficient = classification == "INSUFFICIENT_DATA" or status in ("insufficient_data", "INSUFFICIENT_DATA")
 
             suit_res = suitability_engine.evaluate_zone_suitability(
                 zone=z,
@@ -100,8 +105,15 @@ class CandidateZoneRankingEngine:
             )
 
             risk_level = "CRITICAL" if risk_score >= 80 else "HIGH" if risk_score >= 60 else "MEDIUM" if risk_score >= 35 else "LOW"
-            if is_restr:
+            if is_insufficient:
+                risk_level = "INSUFFICIENT_DATA"
+            elif is_restr:
                 risk_level = "RESTRICTED"
+
+            is_excl = suit_res["is_excluded"] or is_restr or risk_score >= 75 or is_insufficient
+            excl_reason = suit_res.get("exclusion_reason") or (
+                "Insufficient Safety Data" if is_insufficient else ("Restricted Zone" if is_restr else "High Risk")
+            )
 
             record = {
                 "zone_id": zone_id,
@@ -109,15 +121,15 @@ class CandidateZoneRankingEngine:
                 "name": zone_name,
                 "risk_score": risk_score,
                 "risk_level": risk_level,
-                "suitability_score": float(suit_res["suitability_score"]),
-                "suitability_category": suit_res["suitability_category"],
-                "operational_status": "EXCLUDED" if (suit_res["is_excluded"] or is_restr or risk_score >= 75) else "CANDIDATE",
-                "is_excluded": suit_res["is_excluded"] or is_restr or risk_score >= 75,
+                "suitability_score": 0.0 if is_insufficient else float(suit_res["suitability_score"]),
+                "suitability_category": "UNKNOWN" if is_insufficient else suit_res["suitability_category"],
+                "operational_status": "EXCLUDED" if is_excl else "CANDIDATE",
+                "is_excluded": is_excl,
                 "is_restricted": is_restr,
-                "exclusion_reason": suit_res.get("exclusion_reason") or ("Restricted Zone" if is_restr else "High Risk"),
-                "confidence_level": "Medium",
-                "uncertainty_level": "Moderate" if not is_restr else "Low",
-                "why_this_zone": suit_res["summary"],
+                "exclusion_reason": excl_reason,
+                "confidence_level": "Low" if is_insufficient else "Medium",
+                "uncertainty_level": "High" if is_insufficient else ("Moderate" if not is_restr else "Low"),
+                "why_this_zone": "Insufficient critical safety telemetry to certify zone." if is_insufficient else suit_res["summary"],
                 "supporting_evidence": ["INCOIS", "IMD", "GIS Cadastre"]
             }
 
@@ -161,7 +173,7 @@ class CandidateZoneRankingEngine:
         rationale = (
             f"Zone C ranks first because it has lower operational risk (22/100), no detected geospatial restriction, "
             f"and favorable available oceanographic indicators."
-            if top_cand else "All zones currently excluded due to marine hazards or restrictions."
+            if top_cand else "All zones currently excluded due to marine hazards, restrictions, or insufficient safety data."
         )
 
         return {
@@ -176,7 +188,7 @@ class CandidateZoneRankingEngine:
                     "zone": item.code,
                     "risk": item.risk_score,
                     "suitability": item.suitability_score,
-                    "restriction": "Restricted" if item.is_restricted else "Clear",
+                    "restriction": "Restricted" if item.is_restricted else ("Insufficient Data" if item.risk_level == "INSUFFICIENT_DATA" else "Clear"),
                     "confidence": item.confidence_level,
                     "uncertainty": item.uncertainty_level,
                     "status": item.operational_status

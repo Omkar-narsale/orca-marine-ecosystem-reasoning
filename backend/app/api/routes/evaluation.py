@@ -7,7 +7,7 @@ Endpoints for:
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
@@ -21,7 +21,7 @@ HUMAN_EVALUATIONS: List[Dict[str, Any]] = []
 DECISION_AUDITS: Dict[str, Dict[str, Any]] = {
     "audit-latest-001": {
         "decision_id": "audit-latest-001",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "query": "Which fishing zones may be suitable tomorrow morning?",
         "location": "Mumbai Offshore (18.92N, 72.83E)",
         "sources_used": [
@@ -76,7 +76,7 @@ async def submit_human_feedback(req: HumanFeedbackRequest):
     """Submits human evaluator 1-5 assessment scores."""
     record = {
         "feedback_id": f"fb-{uuid.uuid4().hex[:8]}",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "scores": {
             "correctness": req.correctness_score,
             "usefulness": req.usefulness_score,

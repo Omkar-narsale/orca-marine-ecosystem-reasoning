@@ -5,12 +5,54 @@ import { runDemoAnalysis } from '@/lib/demoAnalysis';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:8000/api';
 
+export interface SourceHealthDetail {
+  name: string;
+  source_id?: string;
+  status: string;
+  is_live: boolean;
+  latency_ms?: number;
+  last_successful_fetch?: string;
+  data_freshness?: string;
+  error?: string | null;
+}
+
 export interface SourceHealthSummary {
-  ocean_data: { name: string; status: string; is_live: boolean };
-  weather_data: { name: string; status: string; is_live: boolean };
-  satellite_data: { name: string; status: string; is_live: boolean };
-  geospatial_grid: { name: string; status: string; is_live: boolean };
+  ocean_data: SourceHealthDetail;
+  weather_data: SourceHealthDetail;
+  satellite_data: SourceHealthDetail;
+  geospatial_grid: SourceHealthDetail;
   timestamp: string;
+}
+
+export interface SystemHealthFull {
+  status: 'healthy' | 'degraded' | 'unavailable';
+  health_level?: string;
+  timestamp: string;
+  total_sources: number;
+  connected_sources: number;
+  sources: Array<{
+    source_id: string;
+    name: string;
+    organization: string;
+    status: string;
+    health_state?: string;
+    endpoint: string;
+    last_checked: string;
+    last_successful_retrieval?: string;
+    response_latency_ms?: number;
+    latency_ms?: number;
+    data_freshness?: string;
+    is_live: boolean;
+    error?: string | null;
+    notes: string;
+  }>;
+}
+
+export interface SystemReadiness {
+  status: 'READY' | 'DEGRADED' | 'NOT_READY';
+  ready: boolean;
+  timestamp: string;
+  dependencies: Record<string, string | number>;
 }
 
 export async function fetchMarineZones(): Promise<MarineZone[]> {
@@ -57,11 +99,34 @@ export async function fetchSourcesHealth(): Promise<SourceHealthSummary | null> 
   }
 }
 
+export async function fetchFullSystemHealth(): Promise<SystemHealthFull | null> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/health`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    return null;
+  }
+}
+
+export async function fetchSystemReadiness(): Promise<SystemReadiness | null> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/health/ready`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    return null;
+  }
+}
+
 export async function analyzeMarineQuery(
   query: string,
   sessionId: string = 'orca_session_default',
   language: string = 'en',
-  context?: any
+  context?: any,
+  isDemoMode: boolean = false
 ): Promise<ORCAAnalysisResult> {
   try {
     const res = await fetch(`${BACKEND_URL}/conversation/message`, {
@@ -71,7 +136,8 @@ export async function analyzeMarineQuery(
         message: query,
         session_id: sessionId,
         language: language,
-        context: context
+        context: context,
+        is_demo_mode: isDemoMode
       }),
       cache: 'no-store'
     });
@@ -79,12 +145,12 @@ export async function analyzeMarineQuery(
     const data = await res.json();
     return data;
   } catch (err) {
-    console.warn('[ORCA API] Conversation endpoint fallback, trying /query/analyze:', err);
+    console.warn('[ORCA API] Conversation endpoint fallback, trying /agentic/query:', err);
     try {
-      const res2 = await fetch(`${BACKEND_URL}/query/analyze`, {
+      const res2 = await fetch(`${BACKEND_URL}/agentic/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, context, is_demo_mode: isDemoMode }),
         cache: 'no-store'
       });
       if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
@@ -172,9 +238,11 @@ export async function generateMarineBrief(
   } catch (err) {
     console.warn('[ORCA API] Fallback generating local marine brief:', err);
     return {
+      orca_branding: 'ORCA — Marine Ecosystem Reasoning with Collaborative Agents',
       report_title: 'ORCA OPERATIONAL MARINE INTELLIGENCE BRIEF',
       generated_at: new Date().toLocaleString(),
       reference_id: `ORCA-MB-LOCAL-${Date.now()}`,
+      request_id: `ORCA-LOCAL-${Date.now()}`,
       geographic_sector: region,
       temporal_envelope: timeWindow,
       operational_summary: {
@@ -189,11 +257,12 @@ export async function generateMarineBrief(
       },
       evidence_provenance: [
         { parameter: 'Significant Wave Height', value: '4.1 m', organization: 'INCOIS', source_url: 'https://incois.gov.in/' },
-        { parameter: 'Sustained Wind Speed', value: '30.0 kt', organization: 'IMD', source_url: 'https://mausam.imd.gov.in/' }
+        { parameter: 'Sustained Wind Speed', value: '30.0 kt', organization: 'IMD', source_url: 'https://api.imd.gov.in/public/api_reference.html' }
       ],
       confidence_assessment: { score: '78%', level: 'Medium', explanation: 'All primary authoritative telemetry channels online.' },
+      uncertainty_assessment: { uncertainty_level: 'Moderate', explanation: 'Epistemic forecast drift bounded to 12h horizon.' },
       scientific_limitations: ['PFZ and biological satellite indicators do not guarantee future fish presence.'],
-      governing_disclaimer: 'Scientific data & deterministic mathematical constraints form the source of truth.'
+      governing_disclaimer: 'This report is decision support, not a guarantee of fish presence, safe navigation, or legal authorization.'
     };
   }
 }
@@ -218,12 +287,12 @@ export async function submitUserFeedback(
 }
 
 // ============================================================
-// PHASE 5: DECISION INTELLIGENCE & SCENARIO REASONING CLIENTS
+// PHASE 5 & 6: DECISION INTELLIGENCE & SCENARIO REASONING CLIENTS
 // ============================================================
 
 export async function fetchRankedZones() {
   try {
-    const res = await fetch('http://127.0.0.1:8000/api/decision/rank', { cache: 'no-store' });
+    const res = await fetch(`${BACKEND_URL}/decision/rank`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -265,7 +334,7 @@ export async function fetchRankedZones() {
 
 export async function fetchZoneDecision(zoneId: string) {
   try {
-    const res = await fetch(`http://127.0.0.1:8000/api/decision/${zoneId}`, { cache: 'no-store' });
+    const res = await fetch(`${BACKEND_URL}/decision/${zoneId}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -275,7 +344,7 @@ export async function fetchZoneDecision(zoneId: string) {
 
 export async function fetchZoneTradeoff(zoneA: string = 'zone-c', zoneB: string = 'zone-d') {
   try {
-    const res = await fetch(`http://127.0.0.1:8000/api/decision/tradeoff/compare?zone_a=${zoneA}&zone_b=${zoneB}`, { cache: 'no-store' });
+    const res = await fetch(`${BACKEND_URL}/decision/tradeoff/compare?zone_a=${zoneA}&zone_b=${zoneB}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -287,7 +356,7 @@ export async function fetchZoneTradeoff(zoneA: string = 'zone-c', zoneB: string 
 
 export async function fetchRouteCorridor(destinationZoneId: string = 'zone-c') {
   try {
-    const res = await fetch('http://127.0.0.1:8000/api/decision/route', {
+    const res = await fetch(`${BACKEND_URL}/decision/route`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ destination_zone_id: destinationZoneId }),
@@ -308,7 +377,7 @@ export async function runWhatIfScenario(params: {
   scenario_time_label?: string;
 }) {
   try {
-    const res = await fetch('http://127.0.0.1:8000/api/scenario/run', {
+    const res = await fetch(`${BACKEND_URL}/scenario/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
@@ -346,7 +415,7 @@ export async function runWhatIfScenario(params: {
 
 export async function resetScenario() {
   try {
-    const res = await fetch('http://127.0.0.1:8000/api/scenario/reset', {
+    const res = await fetch(`${BACKEND_URL}/scenario/reset`, {
       method: 'POST',
       cache: 'no-store'
     });
@@ -359,7 +428,7 @@ export async function resetScenario() {
 
 export async function fetchUncertaintyBreakdown(zoneId: string = 'zone-c') {
   try {
-    const res = await fetch(`http://127.0.0.1:8000/api/uncertainty/${zoneId}`, { cache: 'no-store' });
+    const res = await fetch(`${BACKEND_URL}/uncertainty/${zoneId}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -393,7 +462,7 @@ export async function fetchUncertaintyBreakdown(zoneId: string = 'zone-c') {
 
 export async function fetchResearchEvaluationMetrics() {
   try {
-    const res = await fetch('http://127.0.0.1:8000/api/evaluation/metrics', { cache: 'no-store' });
+    const res = await fetch(`${BACKEND_URL}/evaluation/metrics`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -432,7 +501,7 @@ export async function submitHumanEvaluation(feedback: {
   notes?: string;
 }) {
   try {
-    const res = await fetch('http://127.0.0.1:8000/api/evaluation/feedback', {
+    const res = await fetch(`${BACKEND_URL}/evaluation/feedback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(feedback),
@@ -447,7 +516,7 @@ export async function submitHumanEvaluation(feedback: {
 
 export async function fetchDecisionAudit(decisionId: string = 'audit-latest-001') {
   try {
-    const res = await fetch(`http://127.0.0.1:8000/api/evaluation/audit/${decisionId}`, { cache: 'no-store' });
+    const res = await fetch(`${BACKEND_URL}/evaluation/audit/${decisionId}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -464,5 +533,3 @@ export async function fetchDecisionAudit(decisionId: string = 'audit-latest-001'
     };
   }
 }
-
-

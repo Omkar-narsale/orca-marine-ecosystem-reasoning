@@ -1,8 +1,10 @@
 from typing import Optional, List, Dict, Any, Literal
 from pydantic import BaseModel, Field
-from datetime import datetime
 
-DataTypeLiteral = Literal["forecast", "observation", "advisory", "warning", "static"]
+DataTypeLiteral = Literal[
+    "forecast", "observation", "advisory", "warning", "static", "cached", "unknown",
+    "FORECAST", "OBSERVATION", "ADVISORY", "WARNING", "STATIC", "CACHED", "UNKNOWN"
+]
 
 class NormalizedMarineRecord(BaseModel):
     source: str = Field(..., description="Authoritative organization (INCOIS, IMD, MOSDAC, GIS)")
@@ -13,7 +15,8 @@ class NormalizedMarineRecord(BaseModel):
     latitude: Optional[float] = Field(default=None, description="Spatial latitude")
     longitude: Optional[float] = Field(default=None, description="Spatial longitude")
     timestamp: str = Field(..., description="Source emission timestamp")
-    data_type: DataTypeLiteral = Field(..., description="forecast, observation, advisory, warning, or static")
+    observation_time: Optional[str] = Field(default=None, description="Exact observation or measurement time")
+    data_type: DataTypeLiteral = Field(..., description="forecast, observation, advisory, warning, static, cached, or unknown")
     valid_time: str = Field(..., description="Validity window or validity timestamp")
     retrieved_at: str = Field(..., description="Exact time ORCA backend retrieved the record")
     quality: str = Field(default="available", description="Data quality indicator")
@@ -36,7 +39,7 @@ class MarineZoneModel(BaseModel):
     id: str
     code: str
     name: str
-    status: Literal["high_risk", "caution", "suitable", "restricted"]
+    status: Literal["high_risk", "caution", "suitable", "restricted", "insufficient_data"]
     statusLabel: str
     riskScore: int
     confidence: Literal["High", "Medium", "Low"]

@@ -10,6 +10,7 @@ from backend.app.schemas.agentic import (
 )
 from backend.app.agents.orchestrator import orchestrator, SESSION_CONTEXT_CACHE
 from backend.app.agents.planner_agent import planner_agent
+from backend.app.core.tracing import generate_request_id
 
 router = APIRouter(prefix="/agentic", tags=["Agentic AI Intelligence Layer"])
 
@@ -23,16 +24,19 @@ async def execute_agentic_query(
     session_id: Optional[str] = Query(None, description="Optional conversational session ID")
 ):
     """
-    Executes the full ORCA Phase 3 Agentic Graph:
+    Executes the full ORCA Phase 6 Agentic Graph:
     Planner -> Parallel [Ocean, Weather, Geospatial] -> Risk & Evidence -> Synthesis.
     """
     if not request.query or not request.query.strip():
         raise HTTPException(status_code=400, detail="Query text must not be empty.")
     
+    req_id = request.request_id or generate_request_id()
     response = await orchestrator.run(
         query=request.query,
         context=request.context,
-        session_id=session_id
+        session_id=session_id,
+        request_id=req_id,
+        is_demo_mode=request.is_demo_mode
     )
     return response
 

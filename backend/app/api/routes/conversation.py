@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from backend.app.schemas.agentic import AgenticQueryRequest, AgenticQueryResponse, ConversationContext
 from backend.app.agents.orchestrator import orchestrator, SESSION_CONTEXT_CACHE
 from backend.app.agents.conversation_manager import conversation_manager
+from backend.app.core.tracing import generate_request_id
 
 router = APIRouter(prefix="/conversation", tags=["Conversational Marine Intelligence"])
 
@@ -13,6 +14,8 @@ class ConversationalMessageRequest(BaseModel):
     session_id: str = Field("default_session", description="Unique conversation session identifier")
     language: Optional[str] = Field("en", description="Target language: en, hi, mr")
     context: Optional[ConversationContext] = None
+    request_id: Optional[str] = None
+    is_demo_mode: bool = False
 
 @router.post("/message", response_model=AgenticQueryResponse, summary="Send message in multi-turn marine conversation")
 async def send_conversational_message(request: ConversationalMessageRequest):
@@ -23,11 +26,14 @@ async def send_conversational_message(request: ConversationalMessageRequest):
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="Message text must not be empty.")
 
+    req_id = request.request_id or generate_request_id()
     response = await orchestrator.run(
         query=request.message,
         context=request.context,
         session_id=request.session_id,
-        target_language=request.language
+        target_language=request.language,
+        request_id=req_id,
+        is_demo_mode=request.is_demo_mode
     )
     return response
 
