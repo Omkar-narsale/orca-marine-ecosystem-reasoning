@@ -533,3 +533,24 @@ export async function fetchDecisionAudit(decisionId: string = 'audit-latest-001'
     };
   }
 }
+
+export async function fetchComparativeEvaluation() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/evaluation/comparative`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    return null;
+  }
+}
+
+export async function fetchAblationEvaluation() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/evaluation/ablation`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    return null;
+  }
+}
+

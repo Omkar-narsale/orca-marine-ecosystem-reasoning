@@ -12,7 +12,9 @@ from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from backend.app.evaluation.benchmark import run_full_evaluation_benchmark
-from backend.app.evaluation.datasets import BENCHMARK_30_QUERIES, MULTI_TURN_10_BENCHMARKS, ADVERSARIAL_QUERIES
+from backend.app.evaluation.datasets import BENCHMARK_30_QUERIES, MULTI_TURN_10_BENCHMARKS, ADVERSARIAL_QUERIES, load_controlled_scenarios
+from backend.app.evaluation.runner import run_experiment, run_comparative_evaluation
+from backend.app.evaluation.ablation import run_ablation_study
 
 router = APIRouter(prefix="/api/evaluation", tags=["evaluation"])
 
@@ -67,8 +69,29 @@ async def get_benchmark_dataset():
         "multiturn_benchmarks_count": len(MULTI_TURN_10_BENCHMARKS),
         "multiturn_benchmarks": MULTI_TURN_10_BENCHMARKS,
         "adversarial_cases_count": len(ADVERSARIAL_QUERIES),
-        "adversarial_cases": ADVERSARIAL_QUERIES
+        "adversarial_cases": ADVERSARIAL_QUERIES,
+        "controlled_scenarios_count": len(load_controlled_scenarios()),
+        "controlled_scenarios": load_controlled_scenarios()
     }
+
+
+@router.get("/comparative")
+async def get_comparative_evaluation():
+    """Returns empirical comparative evaluation across Rule-Based, Single-Agent, and Full ORCA."""
+    return run_comparative_evaluation()
+
+
+@router.get("/ablation")
+async def get_ablation_evaluation():
+    """Returns the empirical 6-configuration ablation study matrix."""
+    return run_ablation_study()
+
+
+@router.post("/run-experiment")
+async def execute_experiment_run(include_ablation: bool = False):
+    """Executes a full scientific experiment run and persists timestamped results."""
+    res = run_experiment(include_ablation=include_ablation)
+    return res
 
 
 @router.post("/feedback")

@@ -1,4 +1,20 @@
+import json
+import os
 from typing import Dict, Any, List
+
+DATASET_FILE = os.path.join(os.path.dirname(__file__), "datasets", "controlled_scenarios.json")
+
+def load_controlled_scenarios() -> List[Dict[str, Any]]:
+    """Loads the 20-category (A-T) scientific controlled benchmark dataset."""
+    if os.path.exists(DATASET_FILE):
+        try:
+            with open(DATASET_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+CONTROLLED_SCENARIOS: List[Dict[str, Any]] = load_controlled_scenarios()
 
 BENCHMARK_30_QUERIES: List[Dict[str, Any]] = [
     # Category 1: Marine Safety (1-4)
