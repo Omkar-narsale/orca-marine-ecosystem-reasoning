@@ -65,13 +65,66 @@ IntentLiteral = Union[
     ]
 ]
 
+class ActionIntent(str, Enum):
+    NONE = "NONE"
+    SHOW_ON_MAP = "SHOW_ON_MAP"
+    HIGHLIGHT_ON_MAP = "HIGHLIGHT_ON_MAP"
+    SHOW_DETAILS = "SHOW_DETAILS"
+    EXPLAIN = "EXPLAIN"
+    SHOW_SOURCES = "SHOW_SOURCES"
+    COMPARE = "COMPARE"
+    REFINE = "REFINE"
+    RE_RANK = "RE_RANK"
+    CHANGE_LOCATION = "CHANGE_LOCATION"
+    CHANGE_TIME = "CHANGE_TIME"
+
+class MapActionCommand(BaseModel):
+    action: Literal["SELECT", "HIGHLIGHT", "FIT_BOUNDS", "CLEAR", "CENTER", "NONE"] = "NONE"
+    target_id: Optional[str] = None
+    target_name: Optional[str] = None
+    geometry: Optional[Dict[str, Any]] = None
+    zoom: Optional[int] = None
+    center: Optional[Dict[str, float]] = None
+
+class ResultRegistryEntity(BaseModel):
+    id: str
+    type: str
+    name: str
+    geometry: Optional[Dict[str, Any]] = None
+    data: Dict[str, Any] = Field(default_factory=dict)
+    source_refs: List[Dict[str, Any]] = Field(default_factory=list)
+    risk_index: Optional[float] = None
+    is_recommended: Optional[bool] = None
+
+class ConversationResultRegistry(BaseModel):
+    conversation_id: str
+    current_context: Dict[str, Any] = Field(default_factory=dict)
+    last_result: Optional[Dict[str, Any]] = None
+    results: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
+    map_state: Dict[str, Any] = Field(default_factory=dict)
+
+class LocationPayload(BaseModel):
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    accuracy_m: Optional[float] = None
+    timestamp: Optional[str] = None
+    status: Optional[str] = Field(default="UNKNOWN", description="AVAILABLE, DENIED, UNAVAILABLE, PROMPT, UNKNOWN")
+
 class QueryLocation(BaseModel):
+    source: Optional[str] = Field(default="AUTO", description="LIVE_USER_LOCATION, EXPLICIT_QUERY, CONVERSATION_CONTEXT, PROMPT_REQUIRED")
     name: Optional[str] = None
     lat: Optional[float] = None
     lon: Optional[float] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    accuracy_m: Optional[float] = None
     radius_km: Optional[float] = None
     state: Optional[str] = None
     coast: Optional[str] = None
+    resolved_region: Optional[str] = None
+    resolved_district: Optional[str] = None
+    resolved_state: Optional[str] = None
+    resolved_coastal_region: Optional[str] = None
     marine_bearing: Optional[str] = None
     bounds: Optional[Dict[str, float]] = None
 
@@ -84,6 +137,11 @@ class QueryTime(BaseModel):
 
 class ParsedQueryIntent(BaseModel):
     intent: str
+    question_intent: Optional[str] = None
+    action_intent: str = "NONE"
+    target_result_id: Optional[str] = None
+    target_name: Optional[str] = None
+    requires_new_data: bool = True
     location: QueryLocation = Field(default_factory=QueryLocation)
     time: QueryTime = Field(default_factory=QueryTime)
     parameters: List[str] = Field(default_factory=list)
@@ -137,6 +195,7 @@ class PlannerPlan(BaseModel):
 
 class ConversationContext(BaseModel):
     conversation_id: Optional[str] = None
+    live_location: Optional[LocationPayload] = None
     messages: List[Dict[str, Any]] = Field(default_factory=list)
     current_intent: Optional[str] = None
     current_location: Optional[Dict[str, Any]] = None
@@ -201,6 +260,18 @@ class AgenticQueryResponse(BaseModel):
     warnings: List[Dict[str, Any]] = Field(default_factory=list)
     why_reasons: List[str] = Field(default_factory=list)
     
+    # 2D Action Intent & Results
+    action_intent: str = Field(default="NONE")
+    target_result_id: Optional[str] = None
+    target_name: Optional[str] = None
+    map_actions: List[Dict[str, Any]] = Field(default_factory=list)
+    entities: List[Dict[str, Any]] = Field(default_factory=list)
+    status: str = Field(default="SUCCESS")
+
+    # Human-Friendly Plain Language & Evidence Mapping
+    claim_evidence_map: List[Dict[str, Any]] = Field(default_factory=list)
+    human_friendly: Optional[Dict[str, Any]] = None
+
     # Conversational Multi-Turn Context & Suggestions
     follow_up_context: Dict[str, Any] = Field(default_factory=dict)
     follow_up_suggestions: List[str] = Field(default_factory=list)

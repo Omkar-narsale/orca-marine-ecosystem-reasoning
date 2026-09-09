@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     VERSION: str = "3.0.0"
     API_V1_STR: str = "/api"
     
+    # Persistent Database Configuration (PostgreSQL / SQLite via async SQLAlchemy)
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./orca_marine.db")
+    
     # Target Operational Bounding Box: Mumbai / Maharashtra Coastal Region
     DEFAULT_MIN_LAT: float = 18.0
     DEFAULT_MAX_LAT: float = 20.0
@@ -26,6 +29,8 @@ class Settings(BaseSettings):
     
     MOSDAC_BASE_URL: str = "https://www.mosdac.gov.in"
     MOSDAC_API_DOCS: str = "https://mosdac.gov.in/downloadapi-manual"
+    
+    MOSDAC_API_TOKEN: Optional[str] = os.getenv("MOSDAC_API_TOKEN", None)
     
     GIS_CADASTRE_URL: str = "https://hydro-india.nic.in"
     BHUVAN_API_URL: str = "https://bhuvan-app1.nrsc.gov.in/api"

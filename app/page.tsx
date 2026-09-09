@@ -14,6 +14,7 @@ import SafetyAlertsModal from '@/components/SafetyAlertsModal';
 import WhatIfScenarioModal from '@/components/WhatIfScenarioModal';
 import ConfidenceBreakdownModal from '@/components/ConfidenceBreakdownModal';
 import ResearchEvaluationModal from '@/components/ResearchEvaluationModal';
+import { useGeolocation } from '@/lib/useGeolocation';
 import {
   MarineZone,
   ORCAAnalysisResult,
@@ -22,9 +23,6 @@ import {
   MarineSafetyAlert,
   MarineBriefReport
 } from '@/types/marine';
-import { DEMO_ZONES } from '@/data/demoZones';
-import { DEMO_EVIDENCE_SOURCES, DEMO_FRESHNESS_ITEMS } from '@/data/demoEvidence';
-import { runDemoAnalysis } from '@/lib/demoAnalysis';
 import {
   fetchMarineZones,
   fetchEvidenceSources,
@@ -39,21 +37,52 @@ import {
   SourceHealthSummary
 } from '@/lib/apiClient';
 
+const DEFAULT_EMPTY_ANALYSIS: ORCAAnalysisResult = {
+  query: 'No active query',
+  intent: 'GENERAL_QUERY',
+  location: 'Maharashtra Coast',
+  time: 'Current Window',
+  summary: 'No active analysis. Submit an operational query in the chat to view real-time analysis.',
+  decision: {
+    verdict: 'INSUFFICIENT_DATA',
+    action_recommendation: 'Awaiting user query input.',
+    confidence: 'LOW',
+    key_limiting_factor: 'No Analysis Run'
+  },
+  zonesToAvoid: [],
+  potentialZones: [],
+  confidenceLevel: 'Low',
+  confidenceScore: 0,
+  confidenceExplanation: 'No data retrieved.',
+  agentTrace: [],
+  keyAdvisories: [],
+  executionTimeMs: 0
+};
+
 export default function DashboardPage() {
   const [activeSection, setActiveSection] = useState<NavSection>('ask-orca');
   const [viewMode, setViewMode] = useState<'ask' | 'analysis'>('ask');
   const [activeFilter, setActiveFilter] = useState<'all' | 'safe' | 'hazards' | 'restricted'>('all');
-  const [zones, setZones] = useState<MarineZone[]>(DEMO_ZONES);
-  const [selectedZone, setSelectedZone] = useState<MarineZone | null>(DEMO_ZONES[0]);
-  const [evidenceSources, setEvidenceSources] = useState<EvidenceSource[]>(DEMO_EVIDENCE_SOURCES);
-  const [freshnessItems, setFreshnessItems] = useState<DataFreshnessItem[]>(DEMO_FRESHNESS_ITEMS);
+  const [zones, setZones] = useState<MarineZone[]>([]);
+  const [selectedZone, setSelectedZone] = useState<MarineZone | null>(null);
+  const [evidenceSources, setEvidenceSources] = useState<EvidenceSource[]>([]);
+  const [freshnessItems, setFreshnessItems] = useState<DataFreshnessItem[]>([]);
   const [sourceHealth, setSourceHealth] = useState<SourceHealthSummary | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [analysisResult, setAnalysisResult] = useState<ORCAAnalysisResult | null>(null);
   const [currentQuery, setCurrentQuery] = useState<string>('');
   
+  // Browser Geolocation Hook
+  const geoState = useGeolocation();
+
   // Conversational State & Multi-turn Session Management
-  const [sessionId, setSessionId] = useState<string>(() => `orca_session_${Date.now()}`);
+  const [sessionId, setSessionId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('orca_active_session_id');
+      if (stored) return stored;
+    }
+    return `orca_session_${Date.now()}`;
+  });
   const [sessions, setSessions] = useState<ChatSessionMeta[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [language, setLanguage] = useState<string>('en');
@@ -85,6 +114,16 @@ export default function DashboardPage() {
       }
     } catch (e) {
       console.warn('Could not load session list:', e);
+    }
+  }, []);
+
+  // Restore active session history on client mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('orca_active_session_id');
+      if (stored) {
+        handleSelectSession(stored);
+      }
     }
   }, []);
 
@@ -130,6 +169,9 @@ export default function DashboardPage() {
   const handleNewChat = () => {
     const newSid = `orca_session_${Date.now()}`;
     setSessionId(newSid);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('orca_active_session_id', newSid);
+    }
     setMessages([]);
     setCurrentQuery('');
     setAnalysisResult(null);
@@ -143,6 +185,9 @@ export default function DashboardPage() {
   const handleSelectSession = async (targetSessionId: string) => {
     try {
       setSessionId(targetSessionId);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('orca_active_session_id', targetSessionId);
+      }
       const hist = await fetchSessionHistory(targetSessionId);
       if (hist && hist.messages && hist.messages.length > 0) {
         const formatted: ChatMessage[] = hist.messages.map((m: any) => ({
@@ -198,8 +243,18 @@ export default function DashboardPage() {
     };
     setMessages(prev => [...prev, userMsg]);
 
+    const liveLocPayload = geoState.status === 'AVAILABLE' && geoState.latitude !== null && geoState.longitude !== null
+      ? {
+          latitude: geoState.latitude,
+          longitude: geoState.longitude,
+          accuracy_m: geoState.accuracy_m,
+          timestamp: geoState.timestamp,
+          status: geoState.status
+        }
+      : undefined;
+
     try {
-      const result = await analyzeMarineQuery(trimmed, sessionId, activeLang, undefined, isDemoMode);
+      const result = await analyzeMarineQuery(trimmed, sessionId, activeLang, undefined, isDemoMode, liveLocPayload);
       setAnalysisResult(result);
 
       // Extract dynamic zones returned for this specific query
@@ -244,30 +299,26 @@ export default function DashboardPage() {
         why_reasons: (result as any).why_reasons,
         sources: (result as any).sources,
         map: (result as any).map,
-        follow_up_suggestions: (result as any).follow_up_suggestions
+        follow_up_suggestions: (result as any).follow_up_suggestions,
+        claim_evidence_map: (result as any).claim_evidence_map,
+        human_friendly: (result as any).human_friendly
       };
       setMessages(prev => [...prev, assistantMsg]);
       refreshSessions();
     } catch (err) {
       console.error('Error during query analysis:', err);
-      const fallbackResult = runDemoAnalysis(trimmed);
-      setAnalysisResult(fallbackResult);
       const fallbackMsg: ChatMessage = {
         id: `msg_a_${Date.now()}`,
         role: 'assistant',
-        content: fallbackResult.summary,
+        content: 'ORCA backend is unavailable. Please ensure the backend server is running and accessible.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        decision: fallbackResult.decision,
-        zonesToAvoid: fallbackResult.zonesToAvoid,
-        potentialZones: fallbackResult.potentialZones,
+        zonesToAvoid: [],
+        potentialZones: [],
         all_zones: zones,
-        confidenceScore: fallbackResult.confidenceScore,
+        confidenceScore: 0,
         language: activeLang,
-        response_type: (fallbackResult as any).response_type,
-        data: (fallbackResult as any).data,
-        results: (fallbackResult as any).results,
-        why_reasons: (fallbackResult as any).why_reasons,
-        sources: (fallbackResult as any).sources
+        response_type: 'SYSTEM_ERROR',
+        sources: []
       };
       setMessages(prev => [...prev, fallbackMsg]);
     } finally {
@@ -392,6 +443,7 @@ export default function DashboardPage() {
                 isAnalyzing={isAnalyzing}
                 currentQuery={currentQuery}
                 language={language}
+                onLanguageChange={handleLanguageChange}
                 activeZones={zones}
                 selectedZone={selectedZone}
                 onSelectZone={handleSelectZone}
@@ -403,6 +455,7 @@ export default function DashboardPage() {
                 onOpenWhatIfModal={() => setIsWhatIfModalOpen(true)}
                 onOpenConfidenceModal={() => setIsConfidenceModalOpen(true)}
                 onNewChat={handleNewChat}
+                locationState={geoState}
               />
             </div>
           )}
@@ -411,7 +464,7 @@ export default function DashboardPage() {
           {viewMode === 'analysis' && (
             <div className="animate-in fade-in duration-200">
               <AnalysisWorkspace
-                analysis={analysisResult || runDemoAnalysis(currentQuery || 'Avoidance analysis')}
+                analysis={analysisResult || DEFAULT_EMPTY_ANALYSIS}
                 zones={zones}
                 selectedZone={selectedZone}
                 onSelectZone={handleSelectZone}

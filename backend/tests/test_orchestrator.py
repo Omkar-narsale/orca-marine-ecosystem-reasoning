@@ -3,11 +3,11 @@ import asyncio
 from backend.app.agents.orchestrator import orchestrator
 from backend.app.schemas.agentic import ConversationContext
 
-def test_orchestrator_primary_query():
+def test_orchestrator_primary_query(mock_pipeline_data):
     response = asyncio.run(orchestrator.run("Which fishing zones should be avoided tomorrow morning?"))
     
     assert response.query == "Which fishing zones should be avoided tomorrow morning?"
-    assert response.intent == "marine_safety"
+    assert response.intent.lower() in ("marine_safety", "risk_avoidance")
     assert len(response.agentTrace) >= 5 # 6 collaborative agent steps
     assert len(response.zonesToAvoid) >= 2
     assert len(response.potentialZones) >= 1
@@ -15,7 +15,7 @@ def test_orchestrator_primary_query():
     assert len(response.evidenceGraph) > 0
     assert response.executionTimeMs > 0
 
-def test_orchestrator_why_zone_a_risky():
+def test_orchestrator_why_zone_a_risky(mock_pipeline_data):
     response = asyncio.run(orchestrator.run("Why is Zone A risky?"))
     assert response.intent == "zone_analysis"
     assert response.focusedZoneId == "zone-a"

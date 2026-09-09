@@ -1,10 +1,28 @@
 from typing import Optional, List, Dict, Any, Literal
 from pydantic import BaseModel, Field
+from enum import Enum
 
 DataTypeLiteral = Literal[
     "forecast", "observation", "advisory", "warning", "static", "cached", "unknown", "analysis",
     "FORECAST", "OBSERVATION", "ADVISORY", "WARNING", "STATIC", "CACHED", "UNKNOWN", "ANALYSIS"
 ]
+
+class DataStatusEnum(str, Enum):
+    SUCCESS = "SUCCESS"
+    PARTIAL = "PARTIAL"
+    DATA_UNAVAILABLE = "DATA_UNAVAILABLE"
+    SOURCE_ERROR = "SOURCE_ERROR"
+    AUTH_REQUIRED = "AUTH_REQUIRED"
+    TIMEOUT = "TIMEOUT"
+    STALE = "STALE"
+
+class ProviderDataResponse(BaseModel):
+    source: str = Field(..., description="Provider source identifier (INCOIS, IMD, MOSDAC, GIS)")
+    status: DataStatusEnum = Field(..., description="Data retrieval status: SUCCESS, PARTIAL, DATA_UNAVAILABLE, SOURCE_ERROR, AUTH_REQUIRED, TIMEOUT, STALE")
+    records: List["NormalizedMarineRecord"] = Field(default_factory=list, description="List of normalized records")
+    reason: Optional[str] = Field(default=None, description="Reason if data is unavailable, auth required, or error")
+    retrieved_at: Optional[str] = Field(default=None, description="Retrieval timestamp")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Metadata or diagnostics from provider")
 
 class NormalizedMarineRecord(BaseModel):
     source: str = Field(..., description="Authoritative organization (INCOIS, IMD, MOSDAC, GIS)")

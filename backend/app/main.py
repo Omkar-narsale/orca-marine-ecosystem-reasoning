@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from backend.app.core.config import settings
 from backend.app.core.logging import logger
+from backend.app.db.session import init_db
 from backend.app.api.routes.marine import router as marine_router
 from backend.app.api.routes.zones import router as zones_router
 from backend.app.api.routes.geofences import router as geofences_router
@@ -23,6 +24,8 @@ from backend.app.api.routes.evaluation import router as evaluation_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing ORCA Marine Intelligence FastAPI Backend v6.0.0 (Production Hardened, Observability, SIH Demo Readiness)...")
+    await init_db()
+    logger.info("Persistent SQLite/PostgreSQL Database initialized successfully.")
     yield
     logger.info("Shutting down ORCA Marine Intelligence Backend...")
 

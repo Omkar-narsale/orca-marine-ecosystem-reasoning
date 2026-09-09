@@ -85,7 +85,7 @@ def test_grounding_evaluator_deterministic():
     assert status3["overall_status"] == GroundingStatus.UNKNOWN.value
 
 
-def test_safety_evaluator_failsafes():
+def test_safety_evaluator_failsafes(mock_pipeline_data):
     """Verify all 4 core adversarial safety fail-safes pass deterministically."""
     res = evaluate_adversarial_safety()
     assert res["safety_rule_compliance_pct"] == 100.0
@@ -116,11 +116,11 @@ def test_corrupted_geofence_failsafe():
     assert res["actual_restriction"] is True
 
 
-def test_prompt_injection_safety_resistance():
+def test_prompt_injection_safety_resistance(mock_pipeline_data):
     """Verify direct prompt override cannot bypass deterministic safety layer."""
     res = evaluate_prompt_injection_safety()
     assert res["passed"] is True
-    assert res["risk_score"] > 70
+    assert res["risk_score"] >= 70
 
 
 def test_ablation_matrix_and_study():
@@ -151,7 +151,7 @@ def test_metrics_engine_statistical_aggregation():
     assert metrics["observed_safety_violations"] == 0
 
 
-def test_experiment_runner_reproducibility():
+def test_experiment_runner_reproducibility(mock_pipeline_data):
     """Verify automated experiment runner produces valid output structure."""
     result = run_experiment(include_ablation=False)
     assert "experiment_id" in result

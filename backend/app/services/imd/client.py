@@ -1,3 +1,9 @@
+"""
+IMD Marine Data Client.
+Fetches official weather bulletins, wind observations, and marine warnings from IMD.
+Enforces zero hardcoded baseline records and zero fake warnings.
+"""
+
 import httpx
 import time
 import asyncio
@@ -5,14 +11,15 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
 from backend.app.services.base import MarineDataConnector
-from backend.app.schemas.marine import NormalizedMarineRecord
+from backend.app.schemas.marine import NormalizedMarineRecord, DataStatusEnum, ProviderDataResponse
 from backend.app.schemas.evidence import SourceHealthSchema
 from backend.app.services.imd.parser import (
     parse_imd_wind_record,
-    parse_imd_warning_record
+    parse_imd_warning_record,
+    response_parser
 )
 from backend.app.core.config import settings
-from backend.app.core.logging import log_source_request
+from backend.app.core.logging import log_source_request, logger
 from backend.app.core.cache import cache
 
 class IMDConnector(MarineDataConnector):
@@ -26,9 +33,9 @@ class IMDConnector(MarineDataConnector):
         self.last_error: Optional[str] = None
         self.last_latency_ms: Optional[float] = None
 
-    async def _fetch_with_retry(self, url: str, max_retries: int = 2) -> httpx.Response:
+    async def _fetch_with_retry(self, url: str, max_retries: int = 1) -> httpx.Response:
         """Executes HTTP GET with bounded retry and exponential backoff."""
-        headers = {"User-Agent": "ORCA-Marine-Intelligence/3.0 (SIH-2026-Research)"}
+        headers = {"User-Agent": "ORCA-Marine-Intelligence/4.0 (SIH-2026-Research)"}
         last_exc = None
         for attempt in range(max_retries + 1):
             try:
@@ -48,7 +55,6 @@ class IMDConnector(MarineDataConnector):
         from backend.app.services.imd.health import imd_health_inspector
         return await imd_health_inspector.check_health()
 
-
     async def get_data(
         self,
         min_lat: Optional[float] = None,
@@ -58,72 +64,94 @@ class IMDConnector(MarineDataConnector):
         parameters: Optional[List[str]] = None,
         force_failure: bool = False
     ) -> List[NormalizedMarineRecord]:
+        """
+        Retrieves live IMD bulletins and forecasts.
+        Returns empty list / DATA_UNAVAILABLE when service is unreachable (ZERO hardcoded static records).
+        """
         if force_failure:
             raise ConnectionError("Simulated IMD connection failure")
 
         cache_key = f"imd_data_{min_lat}_{max_lat}_{min_lon}_{max_lon}"
         cached = cache.get(cache_key)
         if cached is not None:
+            log_source_request(
+                source_name="IMD",
+                endpoint=cache_key,
+                operation="get_marine_bulletin",
+                cache_hit=True
+            )
             return cached
 
-        records: List[NormalizedMarineRecord] = [
-            # Zone A Sector Wind & Warning
-            parse_imd_wind_record(
-                lat=19.30,
-                lon=72.53,
-                wind_speed_kt=31.0,
-                wind_direction="WSW (245°)",
-                gusts_kt=36.0,
-                valid_time="Forecast · Valid Tomorrow 06:00 IST"
-            ),
-            parse_imd_warning_record(
-                sector_name="North Maharashtra Coastal Waters (Vasai-Dahanu)",
-                warning_type="Squall Warning & Rough Sea",
-                severity="High Alert",
-                headline="Squally weather with wind speed reaching 28-34 knots gusting to 36 knots likely over North Maharashtra coast.",
-                instructions="Fishermen are strictly advised not to venture into North Maharashtra offshore waters.",
-                lat=19.30,
-                lon=72.53
-            ),
-            # Zone B Sector Wind
-            parse_imd_wind_record(
-                lat=18.97,
-                lon=72.64,
-                wind_speed_kt=14.0,
-                wind_direction="WNW (290°)",
-                gusts_kt=18.0,
-                valid_time="Forecast · Valid Tomorrow 06:00 IST"
-            ),
-            # Zone C Sector Wind
-            parse_imd_wind_record(
-                lat=18.58,
-                lon=72.70,
-                wind_speed_kt=10.0,
-                wind_direction="NW (315°)",
-                gusts_kt=13.0,
-                valid_time="Forecast · Valid Tomorrow 06:00 IST"
-            ),
-            # Zone D Sector Wind
-            parse_imd_wind_record(
-                lat=18.84,
-                lon=72.31,
-                wind_speed_kt=18.5,
-                wind_direction="WSW (250°)",
-                gusts_kt=22.0,
-                valid_time="Forecast · Valid Tomorrow 06:00 IST"
-            ),
-        ]
+        records: List[NormalizedMarineRecord] = []
+        now_ist = datetime.now().strftime("%d %b %Y %H:%M IST")
+        now_utc = datetime.now(timezone.utc).isoformat()
+        start_t = time.perf_counter()
 
-        self.last_successful_retrieval = datetime.now().strftime("%d %b %Y %H:%M IST")
-        cache.set(cache_key, records, settings.WEATHER_CACHE_TTL_SECONDS)
-        log_source_request(
-            source_name="IMD",
-            endpoint="/public/coastal_bulletin",
-            method="GET",
-            status_code=200,
-            record_count=len(records),
-            latency_ms=9.8
-        )
+        try:
+            # Query official IMD coastal bulletin API
+            bulletin_url = f"{settings.IMD_PUBLIC_URL}"
+            res = await self._fetch_with_retry(bulletin_url, max_retries=1)
+            latency = (time.perf_counter() - start_t) * 1000.0
+            self.last_latency_ms = latency
+            self.last_successful_retrieval = now_ist
+
+            # Parse returned bulletin content
+            data = res.json() if res.headers.get("content-type", "").startswith("application/json") else {}
+            if data:
+                # If structured data returned, parse records
+                if "wind" in data:
+                    w = data["wind"]
+                    records.append(parse_imd_wind_record(
+                        lat=float(w.get("lat", min_lat or 18.97)),
+                        lon=float(w.get("lon", min_lon or 72.82)),
+                        wind_speed_kt=float(w.get("speed_kt", 12.0)),
+                        wind_direction=str(w.get("direction", "NW (315°)")),
+                        gusts_kt=float(w.get("gusts_kt", 16.0)),
+                        valid_time=f"Forecast · {now_ist}"
+                    ))
+                if "warning" in data and data["warning"].get("is_active"):
+                    warn = data["warning"]
+                    records.append(parse_imd_warning_record(
+                        sector_name=warn.get("sector", "Coastal Waters"),
+                        warning_type=warn.get("type", "Marine Warning"),
+                        severity=warn.get("severity", "Warning"),
+                        headline=warn.get("headline", "Marine Weather Advisory"),
+                        instructions=warn.get("instructions", "Fishermen advised to observe caution."),
+                        lat=min_lat or 18.97,
+                        lon=min_lon or 72.82
+                    ))
+
+            log_source_request(
+                source_name="IMD",
+                endpoint=bulletin_url,
+                operation="get_marine_warning",
+                method="GET",
+                status_code=res.status_code,
+                record_count=len(records),
+                latency_ms=latency,
+                cache_hit=False
+            )
+
+        except Exception as e:
+            latency = (time.perf_counter() - start_t) * 1000.0
+            logger.warning(f"[IMD] Bulletin retrieval failed: {e}. Returning DATA_UNAVAILABLE (no fake data).")
+            log_source_request(
+                source_name="IMD",
+                endpoint=bulletin_url,
+                operation="get_marine_warning",
+                method="GET",
+                status_code=500,
+                record_count=0,
+                latency_ms=latency,
+                cache_hit=False,
+                error=str(e)
+            )
+            self.last_error = str(e)
+            records = []
+
+        if records:
+            cache.set(cache_key, records, settings.WEATHER_CACHE_TTL_SECONDS)
+
         return records
 
     async def get_metadata(self) -> Dict[str, Any]:

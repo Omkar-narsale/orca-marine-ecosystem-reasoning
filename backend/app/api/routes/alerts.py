@@ -1,13 +1,23 @@
-from fastapi import APIRouter, HTTPException, Path
-from typing import Dict, Any, List
+from fastapi import APIRouter, HTTPException, Path, Query
+from typing import Dict, Any, List, Optional
 from backend.app.services.alerts.alert_manager import alert_manager
 
 router = APIRouter(prefix="/alerts", tags=["Proactive Marine Safety Alerts"])
 
-@router.get("", summary="Get all active proactive marine safety alerts")
-async def get_active_alerts():
-    """Returns active deduplicated alerts from INCOIS wave swell, IMD winds/squalls, and GIS Cadastre."""
-    alerts = await alert_manager.get_active_alerts()
+@router.get("", summary="Get active proactive marine safety alerts spatially filtered to location")
+async def get_active_alerts(
+    lat: Optional[float] = Query(None, description="User latitude"),
+    lon: Optional[float] = Query(None, description="User longitude"),
+    accuracy: Optional[float] = Query(None, description="Location accuracy in meters"),
+    timestamp: Optional[str] = Query(None, description="Location ISO timestamp")
+):
+    """Returns active deduplicated alerts from INCOIS, IMD, and GIS Cadastre, spatially evaluated for user coordinates."""
+    alerts = await alert_manager.get_active_alerts(
+        user_lat=lat,
+        user_lon=lon,
+        location_timestamp=timestamp,
+        location_accuracy=accuracy
+    )
     unread_count = alert_manager.get_unread_count()
     return {
         "active_alerts_count": len(alerts),

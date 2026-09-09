@@ -41,3 +41,5 @@ Thumbs.db
 .gemini/
 .agents/
 *.tsbuildinfo
+*.db
+*.sqlite3

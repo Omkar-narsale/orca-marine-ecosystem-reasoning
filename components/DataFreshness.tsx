@@ -1,6 +1,5 @@
 import React from 'react';
 import { DataFreshnessItem } from '@/types/marine';
-import { DEMO_FRESHNESS_ITEMS } from '@/data/demoEvidence';
 import { Clock } from 'lucide-react';
 
 interface DataFreshnessProps {
@@ -8,9 +7,9 @@ interface DataFreshnessProps {
 }
 
 export const DataFreshness: React.FC<DataFreshnessProps> = ({
-  items = DEMO_FRESHNESS_ITEMS,
+  items = [],
 }) => {
-  const activeItems = items && items.length > 0 ? items : DEMO_FRESHNESS_ITEMS;
+  const activeItems = items || [];
 
   return (
     <div className="bg-[#0F172A] rounded-xl border border-slate-800 p-4 shadow-md text-xs font-mono space-y-2.5 text-slate-300">

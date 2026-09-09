@@ -6,7 +6,7 @@ from backend.app.services.risk.pipeline import run_deterministic_analysis
 
 client = TestClient(app)
 
-def test_full_pipeline_primary_query():
+def test_full_pipeline_primary_query(mock_pipeline_data):
     """
     Test primary SIH 2026 Phase 2.2 demo query:
     'Which fishing zones should be avoided tomorrow?'
@@ -47,7 +47,7 @@ def test_api_zones_endpoint():
     assert any(z["zone_id"] == "zone-a" for z in data)
     assert any(z["zone_id"] == "zone-b" for z in data)
 
-def test_api_zones_risk_summary():
+def test_api_zones_risk_summary(mock_pipeline_data):
     response = client.get("/api/zones/risk-summary?time_window=tomorrow%20morning")
     assert response.status_code == 200
     data = response.json()

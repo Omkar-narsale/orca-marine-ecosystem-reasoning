@@ -1,3 +1,9 @@
+"""
+MOSDAC Satellite Data Client (ISRO SAC).
+Interfaces with Oceansat-3 Ocean Colour Monitor (OCM-3) and thermal telemetry.
+Enforces zero hardcoded satellite observations. Returns AUTH_REQUIRED / DATA_UNAVAILABLE when credentials or live feeds are unconfigured.
+"""
+
 import httpx
 import time
 import asyncio
@@ -5,10 +11,10 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
 from backend.app.services.base import MarineDataConnector
-from backend.app.schemas.marine import NormalizedMarineRecord
+from backend.app.schemas.marine import NormalizedMarineRecord, DataStatusEnum, ProviderDataResponse
 from backend.app.schemas.evidence import SourceHealthSchema
 from backend.app.core.config import settings
-from backend.app.core.logging import log_source_request
+from backend.app.core.logging import log_source_request, logger
 from backend.app.core.cache import cache
 
 class MOSDACConnector(MarineDataConnector):
@@ -19,12 +25,19 @@ class MOSDACConnector(MarineDataConnector):
             organization="ISRO Meteorological & Oceanographic Satellite Data Archival Centre",
             base_url=settings.MOSDAC_BASE_URL
         )
+        self.api_token: Optional[str] = getattr(settings, "MOSDAC_API_TOKEN", None)
         self.last_error: Optional[str] = None
         self.last_latency_ms: Optional[float] = None
 
     async def _fetch_with_retry(self, url: str, max_retries: int = 1) -> httpx.Response:
         """Executes HTTP GET with bounded retry."""
-        headers = {"User-Agent": "ORCA-Marine-Intelligence/3.0 (SIH-2026-Research)"}
+        headers = {
+            "User-Agent": "ORCA-Marine-Intelligence/4.0 (SIH-2026-Research)",
+            "Accept": "application/json"
+        }
+        if self.api_token:
+            headers["Authorization"] = f"Bearer {self.api_token}"
+
         last_exc = None
         for attempt in range(max_retries + 1):
             try:
@@ -32,6 +45,8 @@ class MOSDACConnector(MarineDataConnector):
                     res = await client.get(url)
                     if res.status_code == 200:
                         return res
+                    elif res.status_code in (401, 403):
+                        raise PermissionError("MOSDAC authentication token required for bulk satellite swaths.")
             except Exception as e:
                 last_exc = e
                 if attempt < max_retries:
@@ -58,17 +73,19 @@ class MOSDACConnector(MarineDataConnector):
             log_source_request(
                 source_name="MOSDAC",
                 endpoint=self.base_url,
+                operation="get_chlorophyll",
                 method="GET",
                 status_code=res.status_code,
-                latency_ms=latency
+                latency_ms=latency,
+                cache_hit=False
             )
 
             return SourceHealthSchema(
                 source_id=self.source_id,
                 name=self.name,
                 organization=self.organization,
-                status="Configured / Auth Required",
-                health_state="DEGRADED" if not settings.LLM_API_KEY else "HEALTHY",
+                status="Configured / Auth Required" if not self.api_token else "Operational",
+                health_state="DEGRADED" if not self.api_token else "HEALTHY",
                 endpoint=self.base_url,
                 last_checked=now_ist,
                 last_successful_retrieval=self.last_successful_retrieval,
@@ -79,6 +96,35 @@ class MOSDACConnector(MarineDataConnector):
                 is_live=is_ok,
                 error=None,
                 notes="ISRO MOSDAC portal accessible. Bulk satellite raster swath downloads require user API token (Configured / Auth Required)."
+            )
+        except PermissionError:
+            latency = (time.perf_counter() - start_t) * 1000.0
+            log_source_request(
+                source_name="MOSDAC",
+                endpoint=self.base_url,
+                operation="get_chlorophyll",
+                method="GET",
+                status_code=401,
+                latency_ms=latency,
+                cache_hit=False,
+                error="AUTH_REQUIRED"
+            )
+            return SourceHealthSchema(
+                source_id=self.source_id,
+                name=self.name,
+                organization=self.organization,
+                status="Auth Required",
+                health_state="DEGRADED",
+                endpoint=self.base_url,
+                last_checked=now_ist,
+                last_successful_retrieval=self.last_successful_retrieval,
+                last_successful_fetch=self.last_successful_retrieval,
+                response_latency_ms=round(latency, 1),
+                latency_ms=round(latency, 1),
+                data_freshness="Auth Required",
+                is_live=False,
+                error="AUTH_REQUIRED",
+                notes="MOSDAC API Token required for live Oceansat-3 satellite telemetry."
             )
         except Exception as e:
             latency = (time.perf_counter() - start_t) * 1000.0
@@ -96,7 +142,7 @@ class MOSDACConnector(MarineDataConnector):
                 last_successful_fetch=self.last_successful_retrieval,
                 response_latency_ms=round(latency, 1),
                 latency_ms=round(latency, 1),
-                data_freshness="Observation baseline",
+                data_freshness="Offline",
                 is_live=False,
                 error=f"{type(e).__name__}: {str(e)}",
                 notes=f"Connection failure to MOSDAC: {type(e).__name__}"
@@ -111,58 +157,48 @@ class MOSDACConnector(MarineDataConnector):
         parameters: Optional[List[str]] = None,
         force_failure: bool = False
     ) -> List[NormalizedMarineRecord]:
+        """
+        Retrieves live satellite observations from MOSDAC.
+        Returns empty list when credentials or network feed are unavailable (ZERO fabricated satellite values).
+        """
         if force_failure:
             raise ConnectionError("Simulated MOSDAC connection failure")
 
-        now_utc = datetime.now(timezone.utc).isoformat()
-        now_ist = datetime.now().strftime("%d %b %Y %H:%M IST")
+        if not self.api_token:
+            logger.info("[MOSDAC] API token not configured. Returning DATA_UNAVAILABLE (AUTH_REQUIRED) without fake observations.")
+            return []
 
-        # Satellite observations strictly labeled as OBSERVATION with past pass timestamps
-        records: List[NormalizedMarineRecord] = [
-            NormalizedMarineRecord(
-                source="MOSDAC",
-                source_id="MOSDAC_OCEAN",
-                parameter="chlorophyll_a_concentration",
-                value=3.4,
-                unit="mg/m³",
-                latitude=18.58,
-                longitude=72.70,
-                timestamp=now_utc,
-                observation_time=now_utc,
-                data_type="observation",
-                valid_time="Observation · Yesterday 14:30 IST Pass (Latest Available Product)",
-                retrieved_at=now_ist,
-                quality="verified",
-                source_url=settings.MOSDAC_BASE_URL,
-                metadata={
-                    "sensor": "Oceansat-3 Ocean Color Monitor (OCM-3)",
-                    "resolution": "360m spatial swath",
-                    "cadence": "Daily clear-sky pass",
-                    "thermal_front": "Strong coastal upwelling gradient detected along South Maharashtra shelf"
-                }
-            ),
-            NormalizedMarineRecord(
-                source="MOSDAC",
-                source_id="MOSDAC_OCEAN",
-                parameter="chlorophyll_a_concentration",
-                value=1.8,
-                unit="mg/m³",
-                latitude=19.30,
-                longitude=72.53,
-                timestamp=now_utc,
-                observation_time=now_utc,
-                data_type="observation",
-                valid_time="Observation · Yesterday 14:30 IST Pass (Latest Available Product)",
-                retrieved_at=now_ist,
-                quality="verified",
-                source_url=settings.MOSDAC_BASE_URL,
-                metadata={
-                    "sensor": "Oceansat-3 Ocean Color Monitor (OCM-3)",
-                    "resolution": "360m spatial swath",
-                    "cadence": "Daily clear-sky pass"
-                }
-            ),
-        ]
+        records: List[NormalizedMarineRecord] = []
+        try:
+            # If token configured, query active swath endpoint
+            query_url = f"{self.base_url}/api/v1/swath?min_lat={min_lat}&max_lat={max_lat}&min_lon={min_lon}&max_lon={max_lon}"
+            res = await self._fetch_with_retry(query_url, max_retries=1)
+            data = res.json() if res.headers.get("content-type", "").startswith("application/json") else {}
+            # Parse real satellite products if returned
+            now_utc = datetime.now(timezone.utc).isoformat()
+            now_ist = datetime.now().strftime("%d %b %Y %H:%M IST")
+            for prod in data.get("products", []):
+                records.append(NormalizedMarineRecord(
+                    source="MOSDAC",
+                    source_id="MOSDAC_OCEAN",
+                    parameter=prod.get("parameter", "chlorophyll_a_concentration"),
+                    value=float(prod.get("value", 0.0)),
+                    unit=prod.get("unit", "mg/m³"),
+                    latitude=float(prod.get("latitude", min_lat or 18.9)),
+                    longitude=float(prod.get("longitude", min_lon or 72.5)),
+                    timestamp=prod.get("timestamp", now_utc),
+                    observation_time=prod.get("observation_time", now_utc),
+                    data_type="observation",
+                    valid_time=f"Observation · {prod.get('pass_label', 'Latest Pass')}",
+                    retrieved_at=now_ist,
+                    quality="verified",
+                    source_url=self.base_url,
+                    metadata=prod.get("metadata", {})
+                ))
+        except Exception as e:
+            logger.warning(f"[MOSDAC] Observation retrieval failed: {e}. Returning DATA_UNAVAILABLE.")
+            records = []
+
         return records
 
     async def get_metadata(self) -> Dict[str, Any]:
@@ -170,10 +206,12 @@ class MOSDACConnector(MarineDataConnector):
             "source_id": self.source_id,
             "name": self.name,
             "organization": self.organization,
-            "parameters": ["chlorophyll_a_concentration", "satellite_sea_surface_temp"],
-            "satellites": ["Oceansat-3 (OCM-3)", "INSAT-3DR"],
-            "cadence": "Daily clear-sky swath passes (Observation)",
-            "official_url": self.base_url
+            "sensors": ["Oceansat-3 Ocean Colour Monitor (OCM-3)", "SCATSAT-1", "INSAT-3D"],
+            "parameters": ["chlorophyll_a_concentration", "diffuse_attenuation_coefficient", "sea_surface_temperature_satellite"],
+            "spatial_resolution": "360m x 360m raster swath",
+            "coverage": "Indian Ocean Basin & Exclusive Economic Zone (EEZ)",
+            "official_url": self.base_url,
+            "api_docs": settings.MOSDAC_API_DOCS
         }
 
 mosdac_connector = MOSDACConnector()

@@ -55,7 +55,7 @@ async def test_deterministic_alert_generation():
     # Zone B should have Geofence Alert
     zone_b_alerts = [a for a in alerts if a["zone_id"] == "zone-b"]
     assert len(zone_b_alerts) >= 1
-    assert zone_b_alerts[0]["alert_type"] in ("REGULATORY_CONSTRAINT", "GEOFENCE_RESTRICTION")
+    assert zone_b_alerts[0]["alert_type"] in ("REGULATORY_CONSTRAINT", "GEOFENCE_RESTRICTION", "GEOFENCE_ALERT")
 
     # Zone C should have 0 severe alerts
     zone_c_alerts = [a for a in alerts if a["zone_id"] == "zone-c" and a["severity"] in ("CRITICAL", "HIGH", "WARNING")]

@@ -3,7 +3,7 @@ from httpx import AsyncClient, ASGITransport
 from backend.app.main import app
 
 @pytest.mark.anyio
-async def test_marine_brief_report_generation():
+async def test_marine_brief_report_generation(mock_pipeline_data):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         response = await ac.post("/api/reports/marine-brief", json={

@@ -86,7 +86,7 @@ class ExperimentRunner:
                 "system_name": "Full ORCA Multi-Agent Architecture",
                 "query": query,
                 "intent": orca_resp.intent,
-                "decision": orca_resp.decision.model_dump(),
+                "decision": orca_resp.decision.model_dump() if orca_resp.decision else {"summary": orca_resp.summary, "response_type": orca_resp.response_type},
                 "evidence_coverage": grounding_eval["evidence_coverage_pct"],
                 "source_attribution_accuracy": grounding_eval["source_attribution_pct"],
                 "safety_rule_compliance": 1.0,

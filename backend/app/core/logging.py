@@ -72,25 +72,109 @@ def log_source_request(
     record_count: Optional[int] = None,
     latency_ms: Optional[float] = None,
     error: Optional[str] = None,
-    request_id: Optional[str] = None
+    request_id: Optional[str] = None,
+    operation: Optional[str] = None,
+    cache_hit: bool = False,
+    conversation_id: Optional[str] = None
 ):
     """
-    Structured logger for marine & weather data source interactions:
-    [SOURCE] METHOD endpoint status count latency error
+    Structured logger for marine & weather data source interactions.
+    Outputs development-observable multi-line structured block:
+    [ORCA][SOURCE]
+    trace=...
+    operation=...
+    status=...
+    latency=...ms
+    records=...
+    cache_hit=false
     """
     req_id = request_id or get_current_request_id()
-    parts = [f"[{req_id}]", f"[{source_name}]", f"{method} {endpoint}"]
+    op_name = operation or method
+    
+    if cache_hit:
+        msg = f"[ORCA][{source_name}]\ntrace={req_id}\noperation={op_name}\ncache_hit=true"
+        logger.info(msg)
+        return
+
+    parts = [f"[ORCA][{source_name}]", f"trace={req_id}", f"operation={op_name}"]
+    if conversation_id:
+        parts.append(f"conversation={conversation_id}")
     if status_code is not None:
         parts.append(f"status={status_code}")
+    if latency_ms is not None:
+        parts.append(f"latency={int(latency_ms)}ms")
     if record_count is not None:
         parts.append(f"records={record_count}")
-    if latency_ms is not None:
-        parts.append(f"{latency_ms:.1f}ms")
+    parts.append("cache_hit=false")
     if error:
-        parts.append(f"ERROR: {error}")
-        logger.error(" ".join(parts))
-    else:
-        logger.info(" ".join(parts))
+        parts.append(f"error={error}")
+        
+    logger.info("\n".join(parts))
+
+def log_orca_request(
+    conversation_id: str,
+    intent: str,
+    location_source: str,
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+    trace_id: Optional[str] = None
+):
+    """Logs incoming user request context."""
+    req_id = trace_id or get_current_request_id()
+    lat_str = f"{lat:.4f}" if lat is not None else "None"
+    lon_str = f"{lon:.4f}" if lon is not None else "None"
+    msg = (
+        f"[ORCA REQUEST]\n"
+        f"trace={req_id}\n"
+        f"conversation={conversation_id}\n"
+        f"intent={intent}\n"
+        f"location_source={location_source}\n"
+        f"lat={lat_str}\n"
+        f"lon={lon_str}"
+    )
+    logger.info(msg)
+
+def log_orca_result(
+    intent: str,
+    sources: list,
+    status: str = "SUCCESS",
+    trace_id: Optional[str] = None
+):
+    """Logs synthesis result summary."""
+    req_id = trace_id or get_current_request_id()
+    s_names = []
+    if sources:
+        for s in sources:
+            if isinstance(s, dict):
+                s_names.append(s.get("org") or s.get("source") or s.get("name") or "SOURCE")
+            else:
+                s_names.append(str(s))
+    sources_str = ",".join(s_names) if s_names else "NONE"
+    msg = (
+        f"[ORCA RESULT]\n"
+        f"trace={req_id}\n"
+        f"intent={intent}\n"
+        f"sources={sources_str}\n"
+        f"status={status}"
+    )
+    logger.info(msg)
+
+def log_orca_db(
+    conversation_id: str,
+    message_saved: bool = True,
+    result_saved: bool = True,
+    trace_id: Optional[str] = None
+):
+    """Logs conversation database persistence without sensitive information."""
+    req_id = trace_id or get_current_request_id()
+    msg = (
+        f"[ORCA][DB]\n"
+        f"trace={req_id}\n"
+        f"conversation={conversation_id}\n"
+        f"message_saved={str(message_saved).lower()}\n"
+        f"result_saved={str(result_saved).lower()}"
+    )
+    logger.info(msg)
 
 def log_agent_execution(
     agent_name: str,
@@ -120,3 +204,4 @@ def log_tool_execution(
         logger.info(f"[{req_id}] [TOOL:{tool_name}] source={source} status={status} latency={latency_ms:.1f}ms")
     else:
         logger.warning(f"[{req_id}] [TOOL:{tool_name}] source={source} status={status} latency={latency_ms:.1f}ms{err_str}")
+

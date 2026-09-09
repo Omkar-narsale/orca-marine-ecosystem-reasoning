@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { EvidenceSource } from '@/types/marine';
-import { DEMO_EVIDENCE_SOURCES } from '@/data/demoEvidence';
 import { Database, ExternalLink, ShieldCheck, Clock, Layers, ArrowUpRight } from 'lucide-react';
 
 interface EvidenceTabProps {
@@ -13,12 +12,12 @@ interface EvidenceTabProps {
 }
 
 export const EvidenceTab: React.FC<EvidenceTabProps> = ({
-  sources = DEMO_EVIDENCE_SOURCES,
+  sources = [],
   coveragePercent = 100,
   onInspectEvidence,
   onNavigateToMap,
 }) => {
-  const activeSources = sources && sources.length > 0 ? sources : DEMO_EVIDENCE_SOURCES;
+  const activeSources = sources || [];
 
   return (
     <div className="space-y-5 font-mono text-xs text-slate-200">

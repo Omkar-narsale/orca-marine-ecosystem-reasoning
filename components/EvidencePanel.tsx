@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { EvidenceSource } from '@/types/marine';
-import { DEMO_EVIDENCE_SOURCES } from '@/data/demoEvidence';
 import { ViewSourceLink } from './ViewSourceLink';
 import { Database, ShieldCheck } from 'lucide-react';
 
@@ -12,10 +11,10 @@ interface EvidencePanelProps {
 }
 
 export const EvidencePanel: React.FC<EvidencePanelProps> = ({
-  sources = DEMO_EVIDENCE_SOURCES,
+  sources = [],
   onInspectEvidence,
 }) => {
-  const activeSources = sources && sources.length > 0 ? sources : DEMO_EVIDENCE_SOURCES;
+  const activeSources = sources || [];
 
   return (
     <div className="bg-[#0F172A] rounded-xl border border-slate-800 p-4 lg:p-5 shadow-md space-y-3.5 text-xs font-mono text-slate-300">

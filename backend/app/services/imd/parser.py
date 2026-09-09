@@ -200,3 +200,6 @@ def parse_imd_warning_record(
             "authority_type": AuthorityType.OFFICIAL_WARNING.value
         }
     )
+
+imd_response_parser = IMDResponseParser()
+response_parser = imd_response_parser

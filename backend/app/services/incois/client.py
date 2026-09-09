@@ -1,6 +1,7 @@
 """
 INCOIS Query-Driven Client & Data Connector.
 Orchestrates: Intent -> Location -> Temporal -> Dataset Discovery -> ERDDAP Subsetting -> Normalization -> Aggregation.
+Enforces zero hardcoded baseline records. Returns DATA_UNAVAILABLE when live retrieval fails.
 """
 
 import httpx
@@ -10,13 +11,13 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
 from backend.app.services.base import MarineDataConnector
-from backend.app.schemas.marine import NormalizedMarineRecord
+from backend.app.schemas.marine import NormalizedMarineRecord, DataStatusEnum, ProviderDataResponse
 from backend.app.schemas.evidence import SourceHealthSchema
 from backend.app.core.config import settings
-from backend.app.core.logging import log_source_request
+from backend.app.core.logging import log_source_request, logger
 
 from backend.app.services.incois.datasets import VERIFIED_INCOIS_DATASETS, INCOISDatasetMetadata
-from backend.app.services.incois.location import resolve_location, build_marine_bbox, get_radius_for_intent, ResolvedLocation
+from backend.app.services.incois.location import resolve_location, build_marine_bbox, get_radius_for_intent, ResolvedLocation, COASTAL_LOCATION_REGISTRY
 from backend.app.services.incois.temporal import resolve_time_window, ResolvedTimeWindow
 from backend.app.services.incois.discovery import discovery_engine
 from backend.app.services.incois.query_builder import query_builder
@@ -44,8 +45,8 @@ class INCOISConnector(MarineDataConnector):
     async def health_check(self) -> SourceHealthSchema:
         return await health_inspector.check_health()
 
-    async def _fetch_with_retry(self, url: str, max_retries: int = 2) -> httpx.Response:
-        """Executes HTTP GET with bounded retry and exponential backoff."""
+    async def _fetch_with_retry(self, url: str, max_retries: int = 1) -> httpx.Response:
+        """Executes HTTP GET with bounded retry."""
         headers = {"User-Agent": "ORCA-Marine-Intelligence/4.0 (SIH-2026-INCOIS-Query)"}
         last_exc = None
         for attempt in range(max_retries + 1):
@@ -72,9 +73,22 @@ class INCOISConnector(MarineDataConnector):
     ) -> Dict[str, Any]:
         """
         Main query-driven retrieval pipeline for INCOIS ERDDAP.
+        Returns DATA_UNAVAILABLE on failure with zero fabricated numbers.
         """
         if force_failure:
-            raise ConnectionError("Simulated INCOIS ERDDAP service failure")
+            return {
+                "status": DataStatusEnum.DATA_UNAVAILABLE.value,
+                "reason": "SIMULATED_FAILURE",
+                "location": {"name": location_query},
+                "time_window": {"display_label": time_expression},
+                "parameters_requested": parameters or [],
+                "record_count": 0,
+                "nearest_records": [],
+                "all_records": [],
+                "queries_executed": [],
+                "cache_hits": 0,
+                "latency_ms": 0.0
+            }
 
         start_t = time.perf_counter()
 
@@ -116,6 +130,12 @@ class INCOISConnector(MarineDataConnector):
             if cached is not None:
                 all_normalized_records.extend(cached)
                 cache_hits += 1
+                log_source_request(
+                    source_name="INCOIS",
+                    endpoint=ds_meta.dataset_id,
+                    operation=f"get_{ds_meta.dataset_id}",
+                    cache_hit=True
+                )
                 continue
 
             # Construct ERDDAP URL
@@ -145,20 +165,36 @@ class INCOISConnector(MarineDataConnector):
 
             # Fetch & Parse
             records_for_dataset: List[NormalizedMarineRecord] = []
+            ds_start = time.perf_counter()
             try:
                 res = await self._fetch_with_retry(query_url, max_retries=1)
+                ds_latency = (time.perf_counter() - ds_start) * 1000.0
                 payload = res.json()
                 parsed_table = response_parser.parse_json(ds_meta.dataset_id, payload, source_url=query_url)
                 records_for_dataset = normalizer.normalize_records(parsed_table.records, ds_meta, source_url=query_url)
-            except Exception as e:
-                # Controlled telemetry fallback from authoritative INCOIS models
-                records_for_dataset = self._generate_grounded_fallback_subset(
-                    ds_meta=ds_meta,
-                    location=location_res,
-                    bbox=bbox,
-                    time_window=time_window,
-                    variables=vars_to_query
+                log_source_request(
+                    source_name="INCOIS",
+                    endpoint=query_url,
+                    operation=f"get_{ds_meta.dataset_id}",
+                    status_code=res.status_code,
+                    record_count=len(records_for_dataset),
+                    latency_ms=ds_latency,
+                    cache_hit=False
                 )
+            except Exception as e:
+                ds_latency = (time.perf_counter() - ds_start) * 1000.0
+                logger.warning(f"[INCOIS] Dataset query failed for {ds_meta.dataset_id}: {e}")
+                log_source_request(
+                    source_name="INCOIS",
+                    endpoint=query_url,
+                    operation=f"get_{ds_meta.dataset_id}",
+                    status_code=500,
+                    record_count=0,
+                    latency_ms=ds_latency,
+                    cache_hit=False,
+                    error=str(e)
+                )
+                records_for_dataset = []
 
             if records_for_dataset:
                 incois_cache.set(
@@ -173,7 +209,8 @@ class INCOISConnector(MarineDataConnector):
 
         total_latency = (time.perf_counter() - start_t) * 1000.0
         self.last_latency_ms = total_latency
-        self.last_successful_retrieval = datetime.now().strftime("%d %b %Y %H:%M IST")
+        if all_normalized_records:
+            self.last_successful_retrieval = datetime.now().strftime("%d %b %Y %H:%M IST")
 
         # 5. Extract Nearest-Point Representative Metrics
         nearest_records = spatial_aggregator.get_nearest_point_records(
@@ -182,8 +219,11 @@ class INCOISConnector(MarineDataConnector):
             target_lon=location_res.longitude
         )
 
+        status_str = DataStatusEnum.SUCCESS.value if all_normalized_records else DataStatusEnum.DATA_UNAVAILABLE.value
+
         return {
-            "status": "SUCCESS" if all_normalized_records else "DATA_UNAVAILABLE",
+            "source": "INCOIS",
+            "status": status_str,
             "location": {
                 "name": location_res.name,
                 "state": location_res.state,
@@ -207,92 +247,6 @@ class INCOISConnector(MarineDataConnector):
             "latency_ms": round(total_latency, 1)
         }
 
-    def _generate_grounded_fallback_subset(
-        self,
-        ds_meta: INCOISDatasetMetadata,
-        location: ResolvedLocation,
-        bbox: Dict[str, float],
-        time_window: ResolvedTimeWindow,
-        variables: List[str]
-    ) -> List[NormalizedMarineRecord]:
-        """
-        Generates realistic grounded telemetry subset for the exact requested location & time window
-        when ERDDAP network link is unreachable.
-        """
-        records: List[NormalizedMarineRecord] = []
-        now_ist = datetime.now().strftime("%d %b %Y %H:%M IST")
-
-        # Base oceanography dependent on latitude & coastline
-        is_bay_of_bengal = "East" in location.coast
-        base_swh = 1.4 if is_bay_of_bengal else 1.2
-        base_sst = 29.1 if is_bay_of_bengal else 28.5
-
-        # If specific northern sector in Maharashtra, account for elevated monsoon/seasonal swells
-        if "vasai" in location.name.lower() or "zone a" in location.name.lower():
-            base_swh = 4.1
-
-        # Generate 3 spatial grid steps in the bounding box
-        coords = [
-            (location.latitude, location.longitude),
-            (round(bbox["min_lat"] + 0.1, 3), round(bbox["min_lon"] + 0.1, 3)),
-            (round(bbox["max_lat"] - 0.1, 3), round(bbox["max_lon"] - 0.1, 3))
-        ]
-
-        for lat, lon in coords:
-            if ds_meta.category == "WAVE":
-                records.append(NormalizedMarineRecord(
-                    source="INCOIS",
-                    source_id="INCOIS_ERDDAP",
-                    parameter="significant_wave_height",
-                    value=base_swh,
-                    unit="m",
-                    latitude=lat,
-                    longitude=lon,
-                    timestamp=time_window.start_utc,
-                    data_type="forecast",
-                    valid_time=f"Forecast · {time_window.display_label}",
-                    retrieved_at=now_ist,
-                    quality="verified",
-                    source_url=f"{self.erddap_url}/griddap/{ds_meta.dataset_id}.html",
-                    metadata={"dataset_id": ds_meta.dataset_id, "wave_period_s": 8.5, "wave_direction_deg": 240.0}
-                ))
-            elif ds_meta.category == "SST":
-                records.append(NormalizedMarineRecord(
-                    source="INCOIS",
-                    source_id="INCOIS_ERDDAP",
-                    parameter="sea_surface_temperature",
-                    value=base_sst,
-                    unit="°C",
-                    latitude=lat,
-                    longitude=lon,
-                    timestamp=time_window.start_utc,
-                    data_type="analysis",
-                    valid_time=f"Analysis · {time_window.display_label}",
-                    retrieved_at=now_ist,
-                    quality="verified",
-                    source_url=f"{self.erddap_url}/griddap/{ds_meta.dataset_id}.html",
-                    metadata={"dataset_id": ds_meta.dataset_id}
-                ))
-            elif ds_meta.category == "CURRENT":
-                records.append(NormalizedMarineRecord(
-                    source="INCOIS",
-                    source_id="INCOIS_ERDDAP",
-                    parameter="surface_current_speed",
-                    value=0.45,
-                    unit="m/s",
-                    latitude=lat,
-                    longitude=lon,
-                    timestamp=time_window.start_utc,
-                    data_type="forecast",
-                    valid_time=f"Forecast · {time_window.display_label}",
-                    retrieved_at=now_ist,
-                    quality="verified",
-                    source_url=f"{self.erddap_url}/griddap/{ds_meta.dataset_id}.html",
-                    metadata={"dataset_id": ds_meta.dataset_id, "u_m_s": 0.35, "v_m_s": 0.28}
-                ))
-
-        return records
-
     async def get_data(
         self,
         min_lat: Optional[float] = None,
@@ -303,20 +257,20 @@ class INCOISConnector(MarineDataConnector):
         force_failure: bool = False
     ) -> List[NormalizedMarineRecord]:
         """
-        Backward-compatible method for existing Phase 1-7 tools.
+        Retrieves live INCOIS records via dynamic location-based query.
+        Returns empty list when service is unreachable (ZERO hardcoded baseline records).
         """
         if force_failure:
             raise ConnectionError("Simulated INCOIS connection failure")
 
-        # If specific non-Maharashtra bounds are provided, route to query-driven retrieval
-        if min_lat is not None and min_lon is not None and (min_lat < 17.0 or min_lat > 20.5 or min_lon < 70.0 or min_lon > 75.0):
-            from backend.app.services.incois.location import COASTAL_LOCATION_REGISTRY
-            loc_str = "Maharashtra"
+        loc_str = "Maharashtra"
+        if min_lat is not None and min_lon is not None:
             for name, loc in COASTAL_LOCATION_REGISTRY.items():
                 if abs(loc.latitude - min_lat) < 1.0 and abs(loc.longitude - min_lon) < 1.0:
                     loc_str = name
                     break
 
+        try:
             result = await self.query_marine_telemetry(
                 intent="SEA_CONDITIONS",
                 location_query=loc_str,
@@ -325,25 +279,9 @@ class INCOISConnector(MarineDataConnector):
                 force_failure=force_failure
             )
             return result.get("all_records", [])
-
-        # Default Authoritative Maharashtra 4-sector evaluation baseline
-        from backend.app.services.incois.parser import parse_incois_wave_record, parse_incois_sst_record, parse_incois_pfz_advisory
-        records: List[NormalizedMarineRecord] = [
-            # Zone A Sector (North Offshore / Vasai Reach - 4.1m wave)
-            parse_incois_wave_record(lat=19.30, lon=72.53, wave_height_m=4.1, wave_period_s=11.2, wave_direction_deg=245.0, valid_time="Forecast · Valid Tomorrow 06:00 IST"),
-            parse_incois_sst_record(lat=19.30, lon=72.53, sst_celsius=28.8, valid_time="Forecast · Valid Tomorrow 06:00 IST"),
-            # Zone B Sector (Mumbai Harbor Fairway - 1.4m wave)
-            parse_incois_wave_record(lat=18.97, lon=72.64, wave_height_m=1.4, wave_period_s=7.5, wave_direction_deg=280.0, valid_time="Forecast · Valid Tomorrow 06:00 IST"),
-            parse_incois_sst_record(lat=18.97, lon=72.64, sst_celsius=29.2, valid_time="Forecast · Valid Tomorrow 06:00 IST"),
-            # Zone C Sector (South Coastal Offshore / Alibag Shelf - 1.0m wave + PFZ)
-            parse_incois_wave_record(lat=18.58, lon=72.70, wave_height_m=1.0, wave_period_s=6.8, wave_direction_deg=310.0, valid_time="Forecast · Valid Tomorrow 06:00 IST"),
-            parse_incois_sst_record(lat=18.58, lon=72.70, sst_celsius=28.2, valid_time="Forecast · Valid Tomorrow 06:00 IST"),
-            parse_incois_pfz_advisory(sector_name="Alibag-Murud Shelf Line", lat=18.58, lon=72.70, status="Active PFZ Thermal Front Identified", depth_m="22 - 42 m", bearing="SSW (210°)", distance_km=18),
-            # Zone D Sector (Mid-Shelf Trench - 2.1m wave)
-            parse_incois_wave_record(lat=18.84, lon=72.31, wave_height_m=2.1, wave_period_s=8.9, wave_direction_deg=250.0, valid_time="Forecast · Valid Tomorrow 06:00 IST"),
-            parse_incois_sst_record(lat=18.84, lon=72.31, sst_celsius=28.5, valid_time="Forecast · Valid Tomorrow 06:00 IST")
-        ]
-        return records
+        except Exception as e:
+            logger.warning(f"[INCOIS] get_data retrieval error: {e}")
+            return []
 
     async def get_metadata(self) -> Dict[str, Any]:
         return {

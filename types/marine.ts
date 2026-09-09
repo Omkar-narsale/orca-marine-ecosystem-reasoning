@@ -15,6 +15,28 @@ export type QueryIntent =
   | 'COMPARISON'
   | 'WHAT_IF';
 
+export type ActionIntent =
+  | 'NONE'
+  | 'SHOW_ON_MAP'
+  | 'HIGHLIGHT_ON_MAP'
+  | 'SHOW_DETAILS'
+  | 'EXPLAIN'
+  | 'SHOW_SOURCES'
+  | 'COMPARE'
+  | 'REFINE'
+  | 'RE_RANK'
+  | 'CHANGE_LOCATION'
+  | 'CHANGE_TIME';
+
+export interface MapActionCommand {
+  action: 'SELECT' | 'HIGHLIGHT' | 'FIT_BOUNDS' | 'CLEAR' | 'CENTER' | 'NONE';
+  target_id?: string;
+  target_name?: string;
+  geometry?: any;
+  zoom?: number;
+  center?: { lat: number; lng: number };
+}
+
 export type ResponseType =
   | 'CHAT'
   | 'MARINE_CONDITIONS'
@@ -265,6 +287,12 @@ export interface MarineBriefReport {
 export interface ORCAAnalysisResult {
   query: string;
   intent: string;
+  action_intent?: ActionIntent | string;
+  target_result_id?: string;
+  target_name?: string;
+  map_actions?: MapActionCommand[];
+  entities?: any[];
+  status?: string;
   response_type?: ResponseType | string;
   location: string;
   time: string;
@@ -294,4 +322,6 @@ export interface ORCAAnalysisResult {
   evidence_coverage?: number;
   target_language?: string;
   decision?: any;
+  claim_evidence_map?: any[];
+  human_friendly?: any;
 }

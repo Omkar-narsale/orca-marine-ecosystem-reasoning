@@ -28,30 +28,34 @@ class DynamicResultBuilder:
         date_str = advisory_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
         
         # Calculate dynamic offshore PFZ points based on coastal bathymetry and thermal gradients
+        d1 = round(spatial_engine.calculate_distance(lat, lon, lat + 0.12, lon - 0.22), 1)
+        d2 = round(spatial_engine.calculate_distance(lat, lon, lat + 0.28, lon - 0.35), 1)
+        d3 = round(spatial_engine.calculate_distance(lat, lon, lat - 0.18, lon - 0.28), 1)
+
         pfz_points = [
             {
-                "id": "pfz_pt_01",
-                "name": f"PFZ Advisory Line Alpha ({location_name})",
+                "id": "pfz_cand_01",
+                "name": f"PFZ Candidate 1 ({location_name}, {d1} km offshore)",
                 "latitude": round(lat + 0.12, 4),
                 "longitude": round(lon - 0.22, 4),
-                "distance_km": round(spatial_engine.calculate_distance(lat, lon, lat + 0.12, lon - 0.22), 1),
+                "distance_km": d1,
                 "bearing": "WSW (245°)",
                 "depth_range": "35 - 55 m",
                 "advisory_date": date_str,
                 "sst_celsius": 28.3,
                 "chlorophyll_mg_m3": 3.4,
                 "feature_type": "Thermal Front Gradient",
-                "recommendation": "High pelagic fish aggregation probability along thermal front.",
+                "recommendation": "Favorable pelagic fish aggregation probability along thermal-chlorophyll front.",
                 "confidence": "High (INCOIS OCM-3 Validated)",
                 "source": "INCOIS Marine Fisheries Advisory",
                 "source_url": "https://incois.gov.in/MarineFisheries/PfzAdvisory"
             },
             {
-                "id": "pfz_pt_02",
-                "name": f"PFZ Advisory Line Bravo ({location_name})",
+                "id": "pfz_cand_02",
+                "name": f"PFZ Candidate 2 ({location_name}, {d2} km offshore)",
                 "latitude": round(lat + 0.28, 4),
                 "longitude": round(lon - 0.35, 4),
-                "distance_km": round(spatial_engine.calculate_distance(lat, lon, lat + 0.28, lon - 0.35), 1),
+                "distance_km": d2,
                 "bearing": "WNW (290°)",
                 "depth_range": "60 - 85 m",
                 "advisory_date": date_str,
@@ -64,11 +68,11 @@ class DynamicResultBuilder:
                 "source_url": "https://incois.gov.in/MarineFisheries/PfzAdvisory"
             },
             {
-                "id": "pfz_pt_03",
-                "name": f"PFZ Advisory Line Charlie ({location_name})",
+                "id": "pfz_cand_03",
+                "name": f"PFZ Candidate 3 ({location_name}, {d3} km offshore)",
                 "latitude": round(lat - 0.18, 4),
                 "longitude": round(lon - 0.28, 4),
-                "distance_km": round(spatial_engine.calculate_distance(lat, lon, lat - 0.18, lon - 0.28), 1),
+                "distance_km": d3,
                 "bearing": "SW (220°)",
                 "depth_range": "40 - 65 m",
                 "advisory_date": date_str,
@@ -127,33 +131,61 @@ class DynamicResultBuilder:
         self,
         location_name: str,
         lat: float,
-        lon: float
+        lon: float,
+        records: Optional[List[Any]] = None
     ) -> Dict[str, Any]:
-        """Builds standardized marine conditions telemetry (waves, swell, wind, SST, currents, tides)."""
-        # Determine wave state dynamically based on coastal exposure
-        wave_height = 1.4
-        swell_height = 1.1
-        wind_speed_kts = 14.5
-        wind_dir = "WSW (245°)"
-        sst_c = 28.4
-        current_knots = 0.8
-        tide_status = "High Tide: +1.8m at 08:45 IST | Low Tide: +0.4m at 14:30 IST"
+        """Builds standardized marine conditions telemetry from retrieved live records (waves, swell, wind, SST, currents)."""
+        wave_height = None
+        swell_height = None
+        wind_speed_kts = None
+        wind_dir = None
+        sst_c = None
+        current_knots = None
+
+        if records:
+            for r in records:
+                param = getattr(r, "parameter", "") if hasattr(r, "parameter") else r.get("parameter", "")
+                val = getattr(r, "value", None) if hasattr(r, "value") else r.get("value")
+                if "wave" in param.lower() and wave_height is None:
+                    try:
+                        wave_height = float(val)
+                    except (ValueError, TypeError):
+                        pass
+                elif "swell" in param.lower() and swell_height is None:
+                    try:
+                        swell_height = float(val)
+                    except (ValueError, TypeError):
+                        pass
+                elif "wind" in param.lower() and wind_speed_kts is None:
+                    try:
+                        wind_speed_kts = float(val)
+                    except (ValueError, TypeError):
+                        pass
+                elif "temperature" in param.lower() or "sst" in param.lower():
+                    try:
+                        sst_c = float(val)
+                    except (ValueError, TypeError):
+                        pass
+                elif "current" in param.lower() and current_knots is None:
+                    try:
+                        current_knots = float(val)
+                    except (ValueError, TypeError):
+                        pass
 
         conditions = {
             "wave_height_m": wave_height,
-            "wave_state": "Moderate",
+            "wave_state": "Moderate" if wave_height and wave_height > 1.5 else ("Calm" if wave_height else "Telemetry Not Retrieved"),
             "swell_height_m": swell_height,
-            "swell_period_sec": 8.5,
+            "swell_period_sec": 8.0 if swell_height else None,
             "wind_speed_kts": wind_speed_kts,
-            "wind_direction": wind_dir,
-            "wind_gust_kts": round(wind_speed_kts * 1.35, 1),
+            "wind_direction": wind_dir or "Variable",
+            "wind_gust_kts": round(wind_speed_kts * 1.3, 1) if wind_speed_kts else None,
             "sea_surface_temp_c": sst_c,
             "current_speed_kts": current_knots,
             "current_direction": "SSE (160°)",
-            "tide_summary": tide_status,
+            "tide_summary": "Tidal heights subject to Survey of India official tide tables for local coastal station.",
             "visibility_km": 10.0,
-            "barometric_pressure_hpa": 1011.2,
-            "operational_status": "Moderate sea conditions; suitable for calibrated motorized crafts."
+            "operational_status": f"Conditions evaluated for {location_name} under retrieved authoritative data." if (wave_height or wind_speed_kts) else "Authoritative telemetry was unavailable for this sector during query window."
         }
 
         map_config = {
@@ -182,22 +214,56 @@ class DynamicResultBuilder:
         location_name: str,
         lat: float,
         lon: float,
-        has_active_warning: bool = False
+        has_active_warning: bool = False,
+        alerts_override: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
-        """Builds official hazard and cyclone alert representations."""
-        if has_active_warning:
+        """Builds official hazard and cyclone alert representations from authoritative spatial alert engine."""
+        if alerts_override is not None:
+            alerts = alerts_override
+            features = []
+            for a in alerts:
+                geom = a.get("affected_geometry") or {
+                    "type": "Point",
+                    "coordinates": [a.get("location", {}).get("longitude", lon), a.get("location", {}).get("latitude", lat)]
+                }
+                features.append({
+                    "type": geom.get("type", "Polygon"),
+                    "id": a.get("id") or a.get("alert_id"),
+                    "name": a.get("title", "Active Marine Alert"),
+                    "coordinates": geom.get("coordinates", []),
+                    "geometry": geom,
+                    "properties": {
+                        "severity": a.get("severity"),
+                        "alert_type": a.get("type"),
+                        "distance_km": a.get("distance_from_user_km"),
+                        "source": a.get("source")
+                    }
+                })
+
+            map_config = {
+                "show_map": len(features) > 0,
+                "center": {"lat": lat, "lng": lon},
+                "zoom": 8,
+                "layers": [{"id": "imd_warning_area", "name": "Active Marine Warning Envelopes", "visible": True}],
+                "features": features
+            }
+        elif has_active_warning:
             alerts = [
                 {
                     "alert_id": "IMD-SQUALL-2026-088",
-                    "type": "SQUALLY_WEATHER_WARNING",
+                    "id": "IMD-SQUALL-2026-088",
+                    "type": "WEATHER_ALERT",
+                    "alert_type": "WEATHER_ALERT",
                     "severity": "WARNING",
                     "title": f"Squally Weather Warning for {location_name}",
                     "description": "Wind speed reaching 45-55 kmph gusting to 65 kmph likely along and off coastal waters. Fishermen are advised not to venture into deep sea.",
                     "valid_time": "Next 24 Hours",
-                    "distance_km": 0.0,
+                    "distance_from_user_km": 0.0,
                     "wind_speed_kts": 32.0,
+                    "source": "IMD Coastal Warning Division",
                     "source_name": "IMD Marine Warning Division",
-                    "source_url": "https://mausam.imd.gov.in/responsive/coastal_bulletin.php"
+                    "source_url": "https://mausam.imd.gov.in/responsive/coastal_bulletin.php",
+                    "status": "ACTIVE"
                 }
             ]
             map_config = {
@@ -217,6 +283,18 @@ class DynamicResultBuilder:
                             [lat - 0.4, lon + 0.1],
                             [lat - 0.4, lon - 0.5]
                         ],
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [
+                                [
+                                    [lon - 0.5, lat - 0.4],
+                                    [lon - 0.5, lat + 0.4],
+                                    [lon + 0.1, lat + 0.4],
+                                    [lon + 0.1, lat - 0.4],
+                                    [lon - 0.5, lat - 0.4]
+                                ]
+                            ]
+                        },
                         "properties": {"severity": "WARNING", "alert_id": "IMD-SQUALL-2026-088"}
                     }
                 ]
@@ -258,7 +336,7 @@ class DynamicResultBuilder:
         candidates = [
             {
                 "id": "cand_area_01",
-                "name": f"Nearshore Thermal Gradient Zone ({location_name})" if closer_to_shore else f"Continental Shelf Productive Zone Alpha ({location_name})",
+                "name": f"Nearshore Shelf Candidate 1 ({location_name})" if closer_to_shore else f"Productive Shelf Candidate 1 ({location_name})",
                 "rank": 1,
                 "latitude": round(lat + 0.08, 4),
                 "longitude": round(lon - offset_shore, 4),
@@ -391,8 +469,9 @@ class DynamicResultBuilder:
 
         routes = [
             {
-                "route_id": "route_alpha_recommended",
-                "name": "Route Alpha (Recommended Lower-Risk Inshore Shelf Passage)",
+                "route_id": "route_01",
+                "id": "route_01",
+                "name": "Inshore Shelf Passage (Recommended Lower-Risk)",
                 "is_recommended": True,
                 "distance_nm": dist_nm_rec,
                 "distance_km": round(dist_nm_rec * 1.852, 1),
@@ -404,8 +483,9 @@ class DynamicResultBuilder:
                 "waypoints": wp_rec
             },
             {
-                "route_id": "route_bravo_direct",
-                "name": "Route Bravo (Direct Offshore Passage)",
+                "route_id": "route_02",
+                "id": "route_02",
+                "name": "Direct Offshore Passage",
                 "is_recommended": False,
                 "distance_nm": dist_nm_alt,
                 "distance_km": round(dist_nm_alt * 1.852, 1),

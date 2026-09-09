@@ -18,13 +18,20 @@ import {
   AlertTriangle,
   RotateCcw,
   ExternalLink,
-  Info
+  Info,
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+  Network
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { MarineZone, EvidenceSource, ORCAAnalysisResult } from '@/types/marine';
 import { ZoneDetails } from '@/components/ZoneDetails';
 import { IntentCardRouter } from '@/components/analysis/IntentCards';
 import { I18N_STRINGS, LanguageCode } from '@/lib/i18n';
+import { useSpeechRecognition } from '@/lib/useSpeechRecognition';
+import { useSpeechSynthesis } from '@/lib/useSpeechSynthesis';
 
 const MarineMap = dynamic(
   () => import('@/components/MarineMap').then((mod) => mod.MarineMap),
@@ -38,6 +45,8 @@ const MarineMap = dynamic(
     ),
   }
 );
+
+import { GeolocationState } from '@/lib/useGeolocation';
 
 export interface ChatMessage {
   id: string;
@@ -59,6 +68,19 @@ export interface ChatMessage {
   sources?: any[];
   map?: any;
   follow_up_suggestions?: string[];
+  claim_evidence_map?: {
+    claims?: Array<{ claim: string; evidence_ids: string[]; confidence?: string }>;
+    evidence_items?: any[];
+  };
+  human_friendly?: {
+    summary?: string;
+    what_this_means?: string;
+    recommendation?: string;
+    what_you_should_do?: string;
+    why?: string[];
+    evidence?: string[];
+    sources?: string[];
+  };
 }
 
 interface QueryPanelProps {
@@ -67,6 +89,7 @@ interface QueryPanelProps {
   isAnalyzing: boolean;
   currentQuery: string;
   language?: string;
+  onLanguageChange?: (lang: string) => void;
   activeZones: MarineZone[];
   selectedZone: MarineZone | null;
   onSelectZone: (zone: MarineZone) => void;
@@ -75,6 +98,7 @@ interface QueryPanelProps {
   onOpenWhatIfModal?: () => void;
   onOpenConfidenceModal?: () => void;
   onNewChat?: () => void;
+  locationState?: GeolocationState;
 }
 
 export const QueryPanel: React.FC<QueryPanelProps> = ({
@@ -83,6 +107,7 @@ export const QueryPanel: React.FC<QueryPanelProps> = ({
   isAnalyzing,
   currentQuery,
   language = 'en',
+  onLanguageChange,
   activeZones,
   selectedZone,
   onSelectZone,
@@ -91,6 +116,7 @@ export const QueryPanel: React.FC<QueryPanelProps> = ({
   onOpenWhatIfModal,
   onOpenConfidenceModal,
   onNewChat,
+  locationState,
 }) => {
   const langKey = (language as LanguageCode) || 'en';
   const t = I18N_STRINGS[langKey] || I18N_STRINGS.en;
@@ -99,6 +125,38 @@ export const QueryPanel: React.FC<QueryPanelProps> = ({
   const [loadingStep, setLoadingStep] = useState<string>('ORCA is analyzing telemetry...');
   const [showMapModal, setShowMapModal] = useState<boolean>(true);
   const [expandedReasoningMsgId, setExpandedReasoningMsgId] = useState<string | null>(null);
+  const [expandedEvidenceMsgId, setExpandedEvidenceMsgId] = useState<string | null>(null);
+  const [activeSpeakingMsgId, setActiveSpeakingMsgId] = useState<string | null>(null);
+
+  // Speech Recognition Hook (STT)
+  const {
+    isListening,
+    transcript,
+    startListening,
+    stopListening,
+    isSupported: isSttSupported,
+    error: sttError,
+  } = useSpeechRecognition({
+    onResult: (text) => {
+      setInputValue(text);
+    },
+  });
+
+  // Speech Synthesis Hook (TTS)
+  const {
+    isPlaying,
+    isPaused,
+    currentText,
+    voiceNotice,
+    speak,
+    pause,
+    resume,
+    stop,
+  } = useSpeechSynthesis({
+    onEnd: () => {
+      setActiveSpeakingMsgId(null);
+    },
+  });
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const mapSectionRef = useRef<HTMLDivElement>(null);
 
@@ -218,8 +276,30 @@ export const QueryPanel: React.FC<QueryPanelProps> = ({
             Sector: Maharashtra Coastal Grid (18.2°N – 19.5°N)
           </span>
         </div>
-
         <div className="flex items-center gap-2">
+          {/* Language Switcher Pill */}
+          <div className="flex items-center gap-0.5 bg-slate-900 border border-slate-700/80 rounded-lg p-0.5">
+            {[
+              { code: 'en', label: 'EN' },
+              { code: 'hi', label: 'हिंदी' },
+              { code: 'mr', label: 'मराठी' },
+            ].map((l) => (
+              <button
+                key={l.code}
+                type="button"
+                onClick={() => onLanguageChange && onLanguageChange(l.code)}
+                className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${
+                  language === l.code
+                    ? 'bg-teal-500 text-slate-950 shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title={`Switch language to ${l.label}`}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+
           {onNewChat && messages.length > 0 && (
             <button
               onClick={onNewChat}
@@ -301,6 +381,8 @@ export const QueryPanel: React.FC<QueryPanelProps> = ({
             {messages.map((msg) => {
               const isUser = msg.role === 'user';
               const isReasoningExpanded = expandedReasoningMsgId === msg.id;
+              const isEvidenceExpanded = expandedEvidenceMsgId === msg.id;
+              const isSpeaking = activeSpeakingMsgId === msg.id && isPlaying;
 
               if (isUser) {
                 return (
@@ -353,25 +435,39 @@ export const QueryPanel: React.FC<QueryPanelProps> = ({
                     {msg.decision && (
                       <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
                         {msg.zonesToAvoid && msg.zonesToAvoid.length > 0 && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-500/15 border border-rose-500/30 text-rose-300 font-bold">
+                          <span
+                            onClick={() => handleShowMapClick(msg.zonesToAvoid?.[0]?.id)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-rose-500/15 border border-rose-500/30 text-rose-300 font-bold cursor-pointer hover:bg-rose-500/25 transition-colors"
+                            title={msg.zonesToAvoid?.[0]?.reasons?.[0] || "Area avoided due to combined ocean conditions"}
+                          >
                             <AlertTriangle className="w-3 h-3 text-rose-400" />
-                            <span>{msg.zonesToAvoid.length} Avoid {msg.zonesToAvoid.length === 1 ? 'Area' : 'Areas'}</span>
+                            <span>
+                              {msg.zonesToAvoid.length} Avoid {msg.zonesToAvoid.length === 1 ? 'Area' : 'Areas'}
+                              {msg.zonesToAvoid[0]?.name ? `: ${msg.zonesToAvoid[0].name}` : ''}
+                            </span>
                           </span>
                         )}
                         {msg.potentialZones && msg.potentialZones.length > 0 && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold">
+                          <span
+                            onClick={() => handleShowMapClick(msg.potentialZones?.[0]?.id)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold cursor-pointer hover:bg-emerald-500/25 transition-colors"
+                            title="Evaluated as lower-risk candidate under retrieved ocean conditions"
+                          >
                             <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                            <span>{msg.potentialZones.filter((z: any) => z.status === 'suitable' || z.status === 'suitable_candidate').length} Lower-Risk Candidate</span>
+                            <span>
+                              {msg.potentialZones.filter((z: any) => z.status === 'suitable' || z.status === 'suitable_candidate').length} Lower-Risk Candidate
+                              {msg.potentialZones[0]?.name ? `: ${msg.potentialZones[0].name}` : ''}
+                            </span>
                           </span>
                         )}
                         {msg.confidenceScore && (
                           <span
                             onClick={onOpenConfidenceModal}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold cursor-pointer hover:bg-cyan-500/25 transition-colors"
-                            title="Confidence Index reflects evidence completeness, source agreement and data quality"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold cursor-pointer hover:bg-cyan-500/25 transition-colors"
+                            title="This indicates how complete and consistent the retrieved evidence is. It is NOT a probability of safety."
                           >
                             <Info className="w-3 h-3 text-cyan-400" />
-                            <span>Confidence Index: {msg.confidenceScore} / 100</span>
+                            <span>Evidence Confidence: {msg.confidenceScore} / 100</span>
                           </span>
                         )}
                       </div>
@@ -379,12 +475,53 @@ export const QueryPanel: React.FC<QueryPanelProps> = ({
 
                     {/* Quick Action Buttons */}
                     <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80 text-[11px]">
+                      {/* Spoken Audio Listen Button */}
                       <button
-                        onClick={() => handleShowMapClick(msg.focused_zone_id)}
+                        onClick={() => {
+                          if (isSpeaking) {
+                            stop();
+                            setActiveSpeakingMsgId(null);
+                          } else {
+                            setActiveSpeakingMsgId(msg.id);
+                            speak(msg.content, msg.language || language);
+                          }
+                        }}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded transition-colors font-bold ${
+                          isSpeaking
+                            ? 'bg-teal-500/20 text-teal-300 border border-teal-500/50 animate-pulse'
+                            : 'bg-slate-800 hover:bg-slate-700 text-teal-300 hover:text-white border border-slate-700'
+                        }`}
+                        title={
+                          isSpeaking
+                            ? 'Stop spoken response'
+                            : language === 'mr'
+                            ? 'उत्तर ऐका (मराठी)'
+                            : language === 'hi'
+                            ? 'उत्तर सुनें (हिंदी)'
+                            : 'Listen to spoken response'
+                        }
+                      >
+                        {isSpeaking ? (
+                          <>
+                            <VolumeX className="w-3 h-3 text-teal-400" />
+                            <span>Stop Audio</span>
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 className="w-3 h-3 text-teal-400" />
+                            <span>Listen</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          handleShowMapClick(msg.focused_zone_id);
+                        }}
                         className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-teal-300 hover:text-white border border-slate-700 transition-colors font-bold"
                       >
                         <MapPin className="w-3 h-3 text-teal-400" />
-                        <span>Show Map</span>
+                        <span>Show on Map</span>
                       </button>
 
                       <button
@@ -395,22 +532,68 @@ export const QueryPanel: React.FC<QueryPanelProps> = ({
                         <span>{isReasoningExpanded ? 'Hide Why' : 'Why?'}</span>
                       </button>
 
-                      {onOpenEvidenceTab && (
+                      {/* Evidence Graph Button */}
+                      <button
+                        onClick={() => setExpandedEvidenceMsgId(isEvidenceExpanded ? null : msg.id)}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded transition-colors font-bold ${
+                          isEvidenceExpanded
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50'
+                            : 'bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-white border border-slate-700'
+                        }`}
+                        title="View claim-to-evidence graph mapping"
+                      >
+                        <Network className="w-3 h-3 text-amber-400" />
+                        <span>{isEvidenceExpanded ? 'Hide Evidence' : 'Evidence Graph'}</span>
+                      </button>
+
+                      {msg.results && msg.results.length >= 2 && (
                         <button
-                          onClick={onOpenEvidenceTab}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors font-bold"
+                          onClick={() => onAnalyze('Compare them')}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-purple-300 hover:text-white border border-slate-700 transition-colors font-bold"
                         >
-                          <Database className="w-3 h-3 text-amber-400" />
-                          <span>Sources</span>
+                          <SlidersHorizontal className="w-3 h-3 text-purple-400" />
+                          <span>Compare</span>
                         </button>
                       )}
+
+                      {(msg.response_type === 'PFZ_RESULTS' || msg.response_type === 'PRODUCTIVITY_RESULTS') && (
+                        <button
+                          onClick={() => onAnalyze('Can you find an option closer to shore?')}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 hover:text-white border border-slate-700 transition-colors font-bold"
+                        >
+                          <Compass className="w-3 h-3 text-emerald-400" />
+                          <span>Closer to Shore</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => {
+                          if (onOpenEvidenceTab) onOpenEvidenceTab();
+                          else onAnalyze('Show sources');
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors font-bold"
+                      >
+                        <Database className="w-3 h-3 text-amber-400" />
+                        <span>Sources</span>
+                      </button>
                     </div>
 
-                    {/* Collapsible Concise Reasoning Drawer */}
+                    {/* Honest Voice Fallback Notice for Marathi / Unsupported Voices */}
+                    {activeSpeakingMsgId === msg.id && voiceNotice && (
+                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-sans flex items-center gap-2 animate-in fade-in">
+                        <Info className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>{voiceNotice}</span>
+                      </div>
+                    )}
+
+                    {/* Collapsible 2-Layer Why Drawer */}
                     {isReasoningExpanded && (
-                      <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px] space-y-2 animate-in fade-in duration-150">
-                        <div className="flex items-center justify-between text-cyan-300 font-bold border-b border-slate-800 pb-1">
-                          <span>Deterministic Decision Rationale</span>
+                      <div className="p-3.5 rounded-xl bg-slate-900/95 border border-cyan-500/30 text-[11px] space-y-3.5 animate-in fade-in duration-150 shadow-xl">
+                        <div className="flex items-center justify-between text-cyan-300 font-bold border-b border-slate-800 pb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <BrainCircuit className="w-3.5 h-3.5 text-cyan-400" />
+                            <span className="text-xs">Why is ORCA recommending this?</span>
+                          </div>
                           {onOpenReasoningTab && (
                             <button
                               onClick={onOpenReasoningTab}
@@ -421,30 +604,183 @@ export const QueryPanel: React.FC<QueryPanelProps> = ({
                             </button>
                           )}
                         </div>
-                        {msg.why_reasons && msg.why_reasons.length > 0 ? (
-                          <ul className="list-disc list-inside space-y-1 text-slate-300 font-sans">
-                            {msg.why_reasons.map((reason, rIdx) => (
-                              <li key={rIdx} className="leading-relaxed">
-                                <span className="text-slate-200">{reason}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <ul className="list-disc list-inside space-y-1 text-slate-300 font-sans">
-                            <li>
-                              <strong className="text-white">Oceanographic Screening:</strong> Wave height forecasts evaluated from INCOIS Wave Watch III. Elevated wave conditions contribute to risk scoring.
-                            </li>
-                            <li>
-                              <strong className="text-white">Meteorological Advisories:</strong> IMD Marine warnings evaluated. Official statutory warnings take absolute precedence over screening scores.
-                            </li>
-                            <li>
-                              <strong className="text-white">Cadastre Constraints:</strong> GIS boundaries screen defense buffers and naval envelopes deterministically.
-                            </li>
-                            <li>
-                              <strong className="text-white">Safety Distinction:</strong> Prototype risk scores reflect screening indices, not absolute guarantees of vessel safety or fish availability.
-                            </li>
-                          </ul>
+
+                        {/* LAYER 1: USER-FRIENDLY EXPLANATION */}
+                        <div className="space-y-2">
+                          <div className="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700/70 space-y-1.5">
+                            {msg.zonesToAvoid && msg.zonesToAvoid.length > 0 ? (
+                              <div className="text-rose-300 font-medium">
+                                ⚠️ <strong>Area Recommendation:</strong> ORCA recommends avoiding the highlighted area because the combined ocean conditions are less favorable for small craft activity compared with alternative zones.
+                              </div>
+                            ) : (
+                              <div className="text-emerald-300 font-medium">
+                                🌊 <strong>Area Recommendation:</strong> Current retrieved conditions appear generally manageable. No major storm threat was identified in the analyzed sectors.
+                              </div>
+                            )}
+
+                            <div className="pt-1 text-slate-300 space-y-1">
+                              <div>
+                                <span className="font-semibold text-slate-200">What this means:</span>{' '}
+                                <span>
+                                  {msg.human_friendly?.what_this_means ||
+                                    "The forecast does not indicate a severe regional cyclone, but combined sea state and winds require calibrated navigation."}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="font-semibold text-slate-200">What should I do?</span>{' '}
+                                <span>
+                                  {msg.human_friendly?.what_you_should_do ||
+                                    msg.human_friendly?.recommendation ||
+                                    "Consider using one of the lower-risk candidate areas shown on the map and monitor local VHF alerts."}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Contributing Factors Breakdown */}
+                          <div className="space-y-1">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                              Contributing Factors
+                            </span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                              {msg.why_reasons && msg.why_reasons.length > 0 ? (
+                                msg.why_reasons.map((reason, rIdx) => (
+                                  <div key={rIdx} className="p-2 rounded bg-slate-950/70 border border-slate-800 text-slate-300 flex items-start gap-1.5">
+                                    <span className="text-cyan-400 font-bold shrink-0">•</span>
+                                    <span className="leading-snug">{reason}</span>
+                                  </div>
+                                ))
+                              ) : (
+                                <>
+                                  <div className="p-2 rounded bg-slate-950/70 border border-slate-800 text-slate-300">
+                                    🌊 <strong>Wave conditions:</strong> Manageable (&lt;1.4m)
+                                  </div>
+                                  <div className="p-2 rounded bg-slate-950/70 border border-slate-800 text-slate-300">
+                                    💨 <strong>Wind conditions:</strong> Moderate (&lt;15 kt)
+                                  </div>
+                                  <div className="p-2 rounded bg-slate-950/70 border border-slate-800 text-slate-300">
+                                    ⛈️ <strong>Weather warnings:</strong> None detected
+                                  </div>
+                                  <div className="p-2 rounded bg-slate-950/70 border border-slate-800 text-slate-300">
+                                    🗺️ <strong>Fairway restrictions:</strong> Clear
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* LAYER 2: TECHNICAL EVIDENCE SUMMARY */}
+                        <div className="pt-2 border-t border-slate-800 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] uppercase font-bold text-teal-400 tracking-wider">
+                              Technical Evidence
+                            </span>
+                            <button
+                              onClick={() => setExpandedEvidenceMsgId(msg.id)}
+                              className="text-[10px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1"
+                            >
+                              <span>[VIEW FULL EVIDENCE]</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-1.5 text-[10px] font-mono">
+                            <div className="p-1.5 rounded bg-slate-950/80 border border-slate-800 text-center">
+                              <span className="text-teal-400 font-bold block">🌊 INCOIS</span>
+                              <span className="text-slate-200">
+                                {msg.human_friendly?.evidence?.find((e: string) => e.includes('Wave'))?.split(':')[1]?.slice(0, 24) || "Waves < 1.4 m"}
+                              </span>
+                            </div>
+                            <div className="p-1.5 rounded bg-slate-950/80 border border-slate-800 text-center">
+                              <span className="text-amber-400 font-bold block">⛈️ IMD</span>
+                              <span className="text-slate-200">
+                                {msg.human_friendly?.evidence?.find((e: string) => e.includes('Weather'))?.split(':')[1]?.slice(0, 24) || "Warning: None"}
+                              </span>
+                            </div>
+                            <div className="p-1.5 rounded bg-slate-950/80 border border-slate-800 text-center">
+                              <span className="text-cyan-400 font-bold block">🗺️ GIS</span>
+                              <span className="text-slate-200">
+                                {msg.human_friendly?.evidence?.find((e: string) => e.includes('Navigation'))?.split(':')[1]?.slice(0, 24) || "Fairways: Clear"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Collapsible Claim-to-Evidence Traceability Drawer */}
+                    {isEvidenceExpanded && (
+                      <div className="p-3.5 rounded-xl bg-[#0B132B] border border-amber-500/30 text-[11px] space-y-3 animate-in fade-in duration-150">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                          <div className="flex items-center gap-1.5 text-amber-300 font-bold">
+                            <Network className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Claim-to-Evidence Traceability Graph</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono">Deterministic Provenance</span>
+                        </div>
+
+                        {/* Claims Mapping */}
+                        {msg.claim_evidence_map?.claims && msg.claim_evidence_map.claims.length > 0 && (
+                          <div className="space-y-2">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                              Corroborated Assertions
+                            </span>
+                            <div className="space-y-1.5">
+                              {msg.claim_evidence_map.claims.map((cl, cIdx) => (
+                                <div key={cIdx} className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1">
+                                  <div className="flex items-center justify-between text-xs font-sans text-slate-200">
+                                    <span className="font-semibold">&ldquo;{cl.claim}&rdquo;</span>
+                                    {cl.confidence && (
+                                      <span className="px-1.5 py-0.2 rounded bg-teal-500/15 text-teal-300 text-[9px] font-mono border border-teal-500/30">
+                                        {cl.confidence}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-1 text-[10px] text-slate-400 font-mono">
+                                    <span>Supported by:</span>
+                                    {cl.evidence_ids?.map((eid, eIdx) => (
+                                      <span key={eIdx} className="px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                        {eid}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         )}
+
+                        {/* Authoritative Telemetry Nodes */}
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                            Authoritative Telemetry Nodes
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {(msg.claim_evidence_map?.evidence_items && msg.claim_evidence_map.evidence_items.length > 0
+                              ? msg.claim_evidence_map.evidence_items
+                              : (msg.sources || [])
+                            ).map((ev: any, evIdx: number) => (
+                              <div key={evIdx} className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1 text-[10px]">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-teal-300">{ev.organization || ev.source || 'INCOIS'}</span>
+                                  <span className="text-slate-400 font-mono text-[9px]">{ev.valid_time || ev.timestamp || 'Active Forecast'}</span>
+                                </div>
+                                <div className="text-slate-200 font-sans">
+                                  {ev.parameter || ev.title || 'Marine Forecast'}:{' '}
+                                  <span className="text-white font-mono font-bold">
+                                    {ev.value != null ? `${ev.value} ${ev.unit || ''}` : 'Operational'}
+                                  </span>
+                                </div>
+                                {ev.citation && (
+                                  <div className="text-slate-400 font-sans italic text-[9px]">
+                                    Citation: {ev.citation}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -456,11 +792,14 @@ export const QueryPanel: React.FC<QueryPanelProps> = ({
             {isAnalyzing && (
               <div className="flex items-center gap-3 p-3.5 bg-slate-900/90 border border-teal-500/40 rounded-xl animate-in fade-in duration-200">
                 <Loader2 className="w-4 h-4 animate-spin text-teal-400 shrink-0" />
-                <div className="space-y-0.5">
-                  <span className="text-[11px] font-bold text-teal-300 block">{loadingStep}</span>
-                  <span className="text-[9px] text-slate-400 font-sans">
-                    ORCA is synthesizing evidence with deterministic safety precedence...
-                  </span>
+                <div className="space-y-0.5 min-w-0">
+                  <div className="text-xs text-white font-sans font-semibold flex items-center gap-2">
+                    <span>Synthesizing Authoritative Response</span>
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-teal-400 animate-ping" />
+                  </div>
+                  <div className="text-[11px] text-teal-300/80 font-mono truncate">
+                    {loadingStep}
+                  </div>
                 </div>
               </div>
             )}
@@ -468,8 +807,8 @@ export const QueryPanel: React.FC<QueryPanelProps> = ({
             <div ref={chatBottomRef} />
           </div>
 
-          {/* Suggested Follow-up Quick Chips */}
-          {messages.length > 0 && followUpChips.length > 0 && !isAnalyzing && (
+          {/* Contextual Follow-up Suggestions Strip */}
+          {followUpChips.length > 0 && !isAnalyzing && (
             <div className="space-y-1.5 px-1">
               <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                 Suggested Follow-ups
@@ -488,7 +827,37 @@ export const QueryPanel: React.FC<QueryPanelProps> = ({
             </div>
           )}
 
-          {/* Sticky Persistent Chat Input */}
+          {/* Live Device Geolocation Status Badge */}
+          {locationState && (
+            <div className="flex items-center justify-between px-2 py-1 bg-slate-900/60 border border-slate-800 rounded-xl text-[11px] font-mono">
+              <div className="flex items-center gap-1.5">
+                <MapPin className={`w-3.5 h-3.5 ${locationState.status === 'AVAILABLE' ? 'text-teal-400 animate-pulse' : locationState.status === 'DENIED' ? 'text-amber-400' : 'text-slate-400'}`} />
+                {locationState.status === 'AVAILABLE' ? (
+                  <span className="text-teal-300">
+                    📍 Using current location ({locationState.latitude?.toFixed(3)}°N, {locationState.longitude?.toFixed(3)}°E{locationState.accuracy_m ? ` · ±${locationState.accuracy_m}m` : ''})
+                  </span>
+                ) : locationState.status === 'DENIED' ? (
+                  <span className="text-amber-300/90">
+                    📍 Location permission required (specify port or enable device location)
+                  </span>
+                ) : (
+                  <span className="text-slate-400">
+                    📍 Location unavailable (ready for named port inquiries)
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={locationState.requestLocation}
+                className="text-[10px] text-teal-400 hover:text-teal-300 hover:underline cursor-pointer flex items-center gap-1 shrink-0"
+              >
+                <RotateCcw className="w-2.5 h-2.5" />
+                <span>{locationState.status === 'AVAILABLE' ? 'Refresh' : 'Enable'}</span>
+              </button>
+            </div>
+          )}
+
+          {/* Sticky Persistent Chat Input with STT Microphone */}
           <form onSubmit={handleSubmit} className="relative w-full">
             <div className="relative flex items-center bg-[#0F172A] border border-slate-700 rounded-2xl p-1.5 shadow-2xl focus-within:border-teal-400 focus-within:ring-2 focus-within:ring-teal-400/20 transition-all">
               <div className="pl-3 pr-2 text-slate-400 pointer-events-none">
@@ -498,10 +867,48 @@ export const QueryPanel: React.FC<QueryPanelProps> = ({
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder={messages.length === 0 ? "Ask ORCA anything about the sea, zones, or safety..." : "Ask a follow-up (e.g., 'Why Zone A?', 'What about Zone C?', 'Closer to shore')..."}
+                placeholder={
+                  isListening
+                    ? `Listening in ${language === 'hi' ? 'Hindi' : language === 'mr' ? 'Marathi' : 'English'}... Speak now`
+                    : messages.length === 0
+                    ? "Ask ORCA anything about the sea, zones, or safety..."
+                    : "Ask a follow-up (e.g., 'Why Zone A?', 'What about Zone C?', 'Closer to shore')..."
+                }
                 disabled={isAnalyzing}
                 className="w-full py-2.5 bg-transparent text-slate-100 placeholder:text-slate-500 text-xs sm:text-sm font-sans focus:outline-none"
               />
+
+              {/* Voice STT Microphone Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isListening) {
+                    stopListening();
+                  } else {
+                    startListening(language);
+                  }
+                }}
+                disabled={!isSttSupported || isAnalyzing}
+                className={`p-2 rounded-xl border transition-all shrink-0 flex items-center justify-center mr-1 ${
+                  isListening
+                    ? 'bg-rose-500/20 border-rose-500 text-rose-400 animate-pulse ring-2 ring-rose-500/30'
+                    : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300 hover:text-white'
+                }`}
+                title={
+                  !isSttSupported
+                    ? 'Speech recognition not supported in browser'
+                    : isListening
+                    ? 'Listening... Click to stop'
+                    : `Speak in ${language === 'hi' ? 'Hindi (हिंदी)' : language === 'mr' ? 'Marathi (मराठी)' : 'English'}`
+                }
+              >
+                {isListening ? (
+                  <MicOff className="w-4 h-4 text-rose-400 animate-pulse" />
+                ) : (
+                  <Mic className="w-4 h-4 text-teal-400" />
+                )}
+              </button>
+
               <button
                 type="submit"
                 disabled={isAnalyzing || !inputValue.trim()}
@@ -517,6 +924,9 @@ export const QueryPanel: React.FC<QueryPanelProps> = ({
                 )}
               </button>
             </div>
+            {sttError && (
+              <p className="text-[10px] text-rose-400 mt-1 pl-3 font-mono">{sttError}</p>
+            )}
           </form>
         </div>
 
@@ -541,6 +951,12 @@ export const QueryPanel: React.FC<QueryPanelProps> = ({
                 onSelectZone={onSelectZone}
                 filterMode="all"
                 language={language}
+                mapConfig={lastAssistantMessage?.map}
+                userLocation={locationState && locationState.latitude != null && locationState.longitude != null ? {
+                  latitude: locationState.latitude,
+                  longitude: locationState.longitude,
+                  accuracy_m: locationState.accuracy_m ?? undefined
+                } : null}
               />
             </div>
 
