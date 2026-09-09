@@ -51,7 +51,7 @@ class CandidateFishingSuitabilityEngine:
                 "suitability_classification": "UNSUITABLE_HAZARD",
                 "suitability_score": 10,
                 "label": "Unfavorable Sea State",
-                "summary": "Severe swell and wind hazard exceed craft safety threshold. Sector must be bypassed regardless of biological indicators.",
+                "summary": "Severe swell and wind hazard contribute to elevated ORCA risk screening. Sector must be bypassed regardless of biological indicators.",
                 "caveat": "Wave/wind safety constraint takes strict priority over potential fishing cues.",
                 "favorable_window": "Operations suspended until sea state stabilizes post-48h.",
                 "evidence_factors": ["Significant wave height or gale wind forecast exceeds craft limits"],

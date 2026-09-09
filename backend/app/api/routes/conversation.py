@@ -37,6 +37,11 @@ async def send_conversational_message(request: ConversationalMessageRequest):
     )
     return response
 
+@router.get("/sessions", summary="Get all conversational sessions")
+async def get_all_sessions():
+    """Returns all conversation sessions with metadata for conversation history sidebar."""
+    return conversation_manager.get_all_sessions()
+
 @router.get("/{session_id}", summary="Get conversation history for a session")
 async def get_session_history(session_id: str):
     """Returns chronological conversation history between user and ORCA."""
@@ -55,3 +60,4 @@ async def clear_session_history(session_id: str):
     if session_id in conversation_manager._conversations:
         del conversation_manager._conversations[session_id]
     return {"status": "success", "message": f"Session '{session_id}' cleared."}
+

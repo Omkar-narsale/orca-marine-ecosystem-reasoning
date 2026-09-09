@@ -1,5 +1,126 @@
 export type ZoneStatus = 'high_risk' | 'caution' | 'suitable' | 'suitable_candidate' | 'restricted' | 'insufficient_data';
 
+export type QueryIntent =
+  | 'PFZ_DISCOVERY'
+  | 'MARINE_SAFETY'
+  | 'MARINE_CONDITIONS'
+  | 'HAZARD_ALERT'
+  | 'PRODUCTIVITY_SEARCH'
+  | 'ROUTE_PLANNING'
+  | 'PRODUCTIVITY_ANALYSIS'
+  | 'RISK_AVOIDANCE'
+  | 'GENERAL_MARINE_QUERY'
+  | 'SOURCE_QUERY'
+  | 'FOLLOW_UP'
+  | 'COMPARISON'
+  | 'WHAT_IF';
+
+export type ResponseType =
+  | 'CHAT'
+  | 'MARINE_CONDITIONS'
+  | 'SAFETY_ASSESSMENT'
+  | 'PFZ_RESULTS'
+  | 'HAZARD_ALERT'
+  | 'PRODUCTIVITY_RESULTS'
+  | 'PRODUCTIVITY_ANALYSIS'
+  | 'ROUTE_RESULT'
+  | 'RISK_MAP'
+  | 'COMPARISON'
+  | 'SOURCE_EXPLANATION';
+
+export interface PFZItem {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  distance_km: number;
+  bearing: string;
+  depth_range: string;
+  advisory_date: string;
+  sst_celsius: number;
+  chlorophyll_mg_m3: number;
+  feature_type: string;
+  recommendation: string;
+  confidence: string;
+  source: string;
+  source_url: string;
+}
+
+export interface MarineConditionsData {
+  wave_height_m: number;
+  wave_state: string;
+  swell_height_m: number;
+  swell_period_sec?: number;
+  wind_speed_kts: number;
+  wind_direction: string;
+  wind_gust_kts?: number;
+  sea_surface_temp_c: number;
+  current_speed_kts: number;
+  current_direction?: string;
+  tide_summary: string;
+  visibility_km?: number;
+  operational_status?: string;
+}
+
+export interface HazardAlertItem {
+  alert_id: string;
+  type: string;
+  severity: string;
+  title: string;
+  description: string;
+  valid_time: string;
+  distance_km?: number;
+  wind_speed_kts?: number;
+  source_name: string;
+  source_url: string;
+}
+
+export interface RouteOptionItem {
+  route_id: string;
+  name: string;
+  is_recommended: boolean;
+  distance_nm: number;
+  distance_km: number;
+  estimated_transit_hours: number;
+  max_wave_height_m: number;
+  avg_wind_speed_kts: number;
+  hazard_flags: string[];
+  hazards_summary: string;
+  waypoints: [number, number][];
+}
+
+export interface ProductivityAnalysisData {
+  historical_baseline_chlorophyll: string;
+  current_chlorophyll: string;
+  historical_sst: string;
+  current_sst: string;
+  timeseries: Array<{
+    month: string;
+    chlorophyll: number;
+    sst: number;
+    productivity_index: number;
+  }>;
+  contributing_factors: Array<{
+    factor: string;
+    impact: string;
+    evidence: string;
+  }>;
+}
+
+export interface DynamicMapConfig {
+  show_map: boolean;
+  center: { lat: number; lng: number };
+  zoom: number;
+  layers: Array<{ id: string; name: string; visible: boolean }>;
+  features: Array<{
+    type: string;
+    id: string;
+    name: string;
+    coordinates: any;
+    properties: Record<string, any>;
+  }>;
+}
+
 export interface ZoneFactor {
   parameter: string;
   label: string;
@@ -144,9 +265,19 @@ export interface MarineBriefReport {
 export interface ORCAAnalysisResult {
   query: string;
   intent: string;
+  response_type?: ResponseType | string;
   location: string;
   time: string;
   summary: string;
+  answer?: string;
+  data?: any;
+  results?: any[];
+  map?: DynamicMapConfig | any;
+  sources?: any[];
+  warnings?: any[];
+  why_reasons?: string[];
+  follow_up_context?: any;
+  follow_up_suggestions?: string[];
   zonesToAvoid: MarineZone[];
   potentialZones: MarineZone[];
   focusedZoneId?: string;
@@ -162,5 +293,5 @@ export interface ORCAAnalysisResult {
   evidenceGraph?: EvidenceGraphNode[];
   evidence_coverage?: number;
   target_language?: string;
+  decision?: any;
 }
-

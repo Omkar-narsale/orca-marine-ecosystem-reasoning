@@ -39,19 +39,19 @@ class MarineHazardEngine:
         if h_val >= th["critical"]:
             severity = "CRITICAL"
             sub_score = 100.0
-            desc = f"Critical rough sea state: Significant wave height {h_val}m exceeds 4.0m danger threshold."
+            desc = f"Critical rough sea state: Significant wave height {h_val}m contributes to elevated ORCA risk screening."
         elif h_val >= th["high"]:
             severity = "HIGH"
             sub_score = 70.0 + (h_val - th["moderate"]) / (th["critical"] - th["moderate"]) * 25.0
-            desc = f"Elevated wave hazard: Swell reaches {h_val}m exceeding 2.0m craft limit."
+            desc = f"Elevated wave hazard: Swell reaches {h_val}m contributing to elevated ORCA risk screening."
         elif h_val >= th["moderate"]:
             severity = "MODERATE"
             sub_score = 40.0 + (h_val - th["low"]) / (th["high"] - th["low"]) * 30.0
-            desc = f"Moderate wave swell ({h_val}m): Requires caution for crafts under 12m."
+            desc = f"Moderate wave swell ({h_val}m): Contributes to moderate ORCA risk screening."
         else:
             severity = "LOW"
             sub_score = max(5.0, (h_val / th["low"]) * 35.0)
-            desc = f"Calm to slight sea state ({h_val}m): Within safe operational envelope."
+            desc = f"Calm to slight sea state ({h_val}m): Favorable physical sea state."
 
         return {
             "parameter": "significant_wave_height",

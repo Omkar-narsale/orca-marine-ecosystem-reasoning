@@ -97,8 +97,8 @@ class WhatIfScenarioEngine:
         is_scen_excluded = getattr(scen_target, "operational_status", "") == "EXCLUDED" if scen_target else False
         if scen_risk >= 75 or is_scen_excluded:
             explanation = (
-                f"Under this simulated scenario ({scenario_title}), {focus_id.upper()} exceeds the craft safety threshold "
-                f"(Risk increases from {base_risk} to {scen_risk}) and is EXCLUDED from operational candidates."
+                f"Under this simulated scenario ({scenario_title}), {focus_id.upper()} operational risk elevates "
+                f"(Risk Index increases from {base_risk} to {scen_risk}/100) and is EXCLUDED from operational candidates."
             )
         elif risk_delta > 0:
             explanation = (

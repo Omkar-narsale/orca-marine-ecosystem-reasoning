@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import 'leaflet/dist/leaflet.css';
 
 export const metadata: Metadata = {
   title: 'ORCA — Marine EcOsystem Reasoning with Collaborative Agents',
@@ -22,7 +23,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="bg-slate-50 text-slate-900 font-sans antialiased selection:bg-teal-100 selection:text-teal-900 min-h-screen flex flex-col">
+      <body className="bg-[#0B1120] text-slate-100 font-sans antialiased selection:bg-teal-900 selection:text-teal-200 min-h-screen flex flex-col">
         {children}
       </body>
     </html>

@@ -138,3 +138,31 @@ async def get_sources_status():
         },
         "timestamp": datetime.now().strftime("%d %b %Y %H:%M IST")
     }
+
+@router.get("/sources/imd")
+async def get_imd_health():
+    """Diagnostic health status for IMD."""
+    from backend.app.services.imd.health import imd_health_inspector
+    return await imd_health_inspector.check_health()
+
+@router.get("/sources/bhuvan")
+async def get_bhuvan_health():
+    """Diagnostic health status for ISRO Bhuvan."""
+    from backend.app.services.geospatial.bhuvan.health import bhuvan_health_inspector
+    return await bhuvan_health_inspector.check_health()
+
+@router.get("/gis")
+async def get_gis_health():
+    """Diagnostic health status for ORCA GIS Database & Spatial Engine."""
+    from backend.app.services.geospatial.database import gis_database, VERIFIED_RESTRICTED_ZONES, VERIFIED_PORTS, VERIFIED_MARINE_SANCTUARIES
+    return {
+        "source": "ORCA_GIS_DATABASE",
+        "status": "HEALTHY",
+        "spatial_engine": "READY (Shapely/PostGIS)",
+        "layers": {
+            "ports": len(VERIFIED_PORTS),
+            "restricted_zones": len(VERIFIED_RESTRICTED_ZONES),
+            "marine_sanctuaries": len(VERIFIED_MARINE_SANCTUARIES)
+        },
+        "timestamp": datetime.now().strftime("%d %b %Y %H:%M IST")
+    }

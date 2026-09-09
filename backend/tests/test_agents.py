@@ -10,7 +10,7 @@ from backend.app.schemas.agentic import ConversationContext
 
 def test_planner_agent_intent_and_tools():
     plan = planner_agent.plan("Which fishing zones should be avoided tomorrow morning?")
-    assert plan.intent == "marine_safety"
+    assert plan.intent.lower() == "marine_safety"
     assert "ocean" in plan.required_agents
     assert "weather" in plan.required_agents
     assert "geospatial" in plan.required_agents

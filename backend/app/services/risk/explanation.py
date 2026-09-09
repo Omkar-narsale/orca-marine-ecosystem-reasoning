@@ -20,7 +20,7 @@ class DeterministicExplanationEngine:
 
         if wave_h.get("severity") in ("HIGH", "CRITICAL"):
             reasons.append(
-                f"Elevated wave swell ({wave_h['value']}m forecast from {wave_h.get('source', 'INCOIS')}) breaches 3.5m craft safety threshold."
+                f"Elevated wave swell ({wave_h['value']}m forecast from {wave_h.get('source', 'INCOIS')}) contributes to elevated ORCA risk screening."
             )
         elif wave_h.get("severity") == "MODERATE":
             reasons.append(

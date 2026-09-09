@@ -142,7 +142,7 @@ async def run_deterministic_analysis(query_text: str) -> Dict[str, Any]:
             {"agentName": "Risk & Evidence Engine", "action": f"Classified {len(avoid_zones)} avoid sectors and {len(potential_zones)} candidate sectors", "status": "completed"}
         ],
         "keyAdvisories": [
-            "Zone A: INCOIS wave forecast exceeds 3.5m danger threshold with active IMD squall warning.",
+            "Zone A: Elevated wave conditions (4.1m INCOIS forecast) with active IMD squall warning.",
             "Zone B: Restricted maritime corridor (Naval Anchorage basin & commercial fairway). Fishing prohibited.",
             "Zone C: Favorable candidate zone with calm sea swell (<1.2m) and recent MOSDAC chlorophyll front."
         ],

@@ -181,7 +181,7 @@ export async function fetchActiveAlerts(): Promise<{ alerts: any[]; unread_count
           title: 'ZONE A: High Wave & Swell Advisory',
           zone_id: 'zone-a',
           zone_code: 'ZONE A',
-          message: 'Significant wave height 4.1 m exceeds small-craft safety threshold.',
+          message: 'Elevated wave conditions (4.1 m forecast from INCOIS OSF) detected in northern sector.',
           value: '4.1 m',
           source_name: 'INCOIS Wave Watch III',
           source_url: 'https://incois.gov.in/oceanservices/osfforecast.jsp',
@@ -553,4 +553,49 @@ export async function fetchAblationEvaluation() {
     return null;
   }
 }
+
+export async function fetchConversationSessions(): Promise<Array<{
+  session_id: string;
+  title: string;
+  created_at: string;
+  last_updated: string;
+  message_count: number;
+  language: string;
+  last_query: string;
+}>> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/conversation/sessions`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    return [];
+  }
+}
+
+export async function fetchSessionHistory(sessionId: string): Promise<{
+  session_id: string;
+  message_count: number;
+  messages: any[];
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/conversation/${sessionId}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    return { session_id: sessionId, message_count: 0, messages: [] };
+  }
+}
+
+export async function clearSessionHistory(sessionId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/conversation/${sessionId}/clear`, {
+      method: 'POST',
+      cache: 'no-store'
+    });
+    return res.ok;
+  } catch (err) {
+    return false;
+  }
+}
+
 

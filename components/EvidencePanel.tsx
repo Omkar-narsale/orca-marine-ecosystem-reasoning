@@ -4,6 +4,7 @@ import React from 'react';
 import { EvidenceSource } from '@/types/marine';
 import { DEMO_EVIDENCE_SOURCES } from '@/data/demoEvidence';
 import { ViewSourceLink } from './ViewSourceLink';
+import { Database, ShieldCheck } from 'lucide-react';
 
 interface EvidencePanelProps {
   sources?: EvidenceSource[];
@@ -17,53 +18,51 @@ export const EvidencePanel: React.FC<EvidencePanelProps> = ({
   const activeSources = sources && sources.length > 0 ? sources : DEMO_EVIDENCE_SOURCES;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm space-y-4 text-xs">
-      <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-        <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-900">
-            Evidence & Source Provenance
+    <div className="bg-[#0F172A] rounded-xl border border-slate-800 p-4 lg:p-5 shadow-md space-y-3.5 text-xs font-mono text-slate-300">
+      <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
+        <div className="flex items-center gap-2">
+          <Database className="w-4 h-4 text-teal-400" />
+          <span className="font-bold uppercase tracking-wider text-white">
+            Evidence Provenance & Source Registry
           </span>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            ORCA fused {activeSources.length} authoritative official observation & forecast feeds
-          </p>
         </div>
-        <span className="text-[10px] font-mono text-slate-400">
-          Official Links
+        <span className="text-[10px] text-teal-400 bg-teal-500/10 px-2 py-0.5 rounded border border-teal-500/30">
+          {activeSources.length} Feeds Fused
         </span>
       </div>
 
-      {/* Clean Minimal Rows with Real Clickable URLs */}
-      <div className="divide-y divide-slate-100">
+      {/* Structured Feeds Grid */}
+      <div className="divide-y divide-slate-800/80">
         {activeSources.map((source) => (
           <div
             key={source.id}
-            className="py-3.5 first:pt-1 last:pb-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+            className="py-3 first:pt-0.5 last:pb-0.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
           >
             <div className="space-y-0.5 max-w-xl">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-900 text-xs">
+                <span className="font-bold text-white text-xs">
                   {source.name}
                 </span>
-                <span className="text-slate-400">·</span>
-                <span className="text-slate-600 font-medium">
+                <span className="text-slate-600">·</span>
+                <span className="text-teal-400/90 font-medium text-[11px]">
                   {source.organization}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-700 font-medium">
+              <p className="text-[11px] font-sans text-slate-200">
                 {source.title || source.parameter}
               </p>
-              <p className="text-[10px] text-slate-400">
+              <p className="text-[10px] font-sans text-slate-400">
                 {source.description}
               </p>
             </div>
 
-            <div className="flex items-center justify-between sm:justify-end gap-4 text-[11px] shrink-0">
-              <span className="font-mono text-slate-400 text-[10px]">
+            <div className="flex items-center justify-between sm:justify-end gap-3 text-[10px] shrink-0">
+              <span className="text-slate-400">
                 {source.timestamp}
               </span>
               <ViewSourceLink
                 sourceUrl={source.sourceUrl}
-                label="View Source"
+                label="View Source ↗"
               />
             </div>
           </div>

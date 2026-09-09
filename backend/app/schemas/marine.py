@@ -2,8 +2,8 @@ from typing import Optional, List, Dict, Any, Literal
 from pydantic import BaseModel, Field
 
 DataTypeLiteral = Literal[
-    "forecast", "observation", "advisory", "warning", "static", "cached", "unknown",
-    "FORECAST", "OBSERVATION", "ADVISORY", "WARNING", "STATIC", "CACHED", "UNKNOWN"
+    "forecast", "observation", "advisory", "warning", "static", "cached", "unknown", "analysis",
+    "FORECAST", "OBSERVATION", "ADVISORY", "WARNING", "STATIC", "CACHED", "UNKNOWN", "ANALYSIS"
 ]
 
 class NormalizedMarineRecord(BaseModel):

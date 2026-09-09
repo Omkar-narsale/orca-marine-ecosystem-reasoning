@@ -11,15 +11,15 @@ ORCA integrates four official, scientific, and statutory data providers:
 
 ### 1.1 INCOIS (Indian National Centre for Ocean Information Services)
 - **Authority**: Ministry of Earth Sciences (MoES), Government of India
-- **Products**:
-  - Significant Wave Height ($H_s$, meters)
-  - Wave Period ($T_p$, seconds)
-  - Sea Surface Temperature (SST, °C)
-  - Potential Fishing Zone (PFZ) Advisories (Thermal Fronts)
-- **Underlying Numerical Models**: Wave Watch III, ROMS Coastal Hydrodynamics
-- **Nominal Update Cadence**: 12-hourly numerical forecast cycles
-- **Official URL**: [https://incois.gov.in](https://incois.gov.in)
-- **ERDDAP Server**: `https://erddap.incois.gov.in/erddap`
+- **ERDDAP Server**: `https://erddap.incois.gov.in/erddap/`
+- **Official Portal**: [https://incois.gov.in](https://incois.gov.in)
+- **Verified INCOIS ERDDAP Datasets**:
+  - `incois_ww3_regional`: Significant wave height (`swh`), mean period (`mwp`), wave direction (`mwd`), swell height (`swell_height`).
+  - `incois_roms_hydrodynamics`: 3D ocean currents (`u`, `v`), potential temperature (`temp`), salinity (`salinity`).
+  - `incois_sst_composite`: Multi-satellite daily blended SST (`sst`, `sst_anomaly`).
+  - `incois_ocm_chlorophyll`: Ocean Colour Monitor chlorophyll-a (`chlorophyll`, `kd_490`).
+  - `incois_pfz_advisory_table`: Daily Potential Fishing Zone advisory bulletins and thermal front coordinates.
+- **Nominal Update Cadence**: 12-hourly numerical wave cycles, 6-hourly hydrodynamic steps, daily satellite composites.
 
 ### 1.2 IMD (India Meteorological Department)
 - **Authority**: Ministry of Earth Sciences (MoES), Government of India

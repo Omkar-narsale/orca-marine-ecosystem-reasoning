@@ -211,7 +211,7 @@ def test_orchestrator_execution_with_metrics_and_trace_id():
         request_id=custom_trace_id
     ))
     assert response.request_id == custom_trace_id
-    assert response.intent == "marine_safety"
+    assert response.intent.lower() == "marine_safety"
     assert len(response.zonesToAvoid) >= 2
     assert len(response.potentialZones) >= 1
     

@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     MOSDAC_API_DOCS: str = "https://mosdac.gov.in/downloadapi-manual"
     
     GIS_CADASTRE_URL: str = "https://hydro-india.nic.in"
+    BHUVAN_API_URL: str = "https://bhuvan-app1.nrsc.gov.in/api"
+    BHUVAN_API_TOKEN: Optional[str] = os.getenv("BHUVAN_API_TOKEN", None)
     
     # Timeouts & Cache
     HTTP_TIMEOUT_SECONDS: float = 10.0
@@ -35,10 +37,12 @@ class Settings(BaseSettings):
     OCEAN_FORECAST_CACHE_TTL_SECONDS: int = 1800 # 30 minutes
     STATIC_CACHE_TTL_SECONDS: int = 86400      # 24 hours
 
-    # LLM & Agent Configuration (Phase 3)
-    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "deterministic_fallback") # "openai", "anthropic", "gemini", "deterministic_fallback"
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "orca-marine-agentic-v3")
+    # LLM & Agent Configuration (Groq & Pluggable Providers)
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "groq" if os.getenv("GROQ_API_KEY") else "deterministic_fallback")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
     LLM_API_KEY: Optional[str] = os.getenv("LLM_API_KEY", None)
+    GROQ_API_KEY: Optional[str] = os.getenv("GROQ_API_KEY", None)
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
     
     # Agent Guardrails & Loop Protection
     MAX_AGENT_STEPS: int = 8

@@ -69,12 +69,12 @@ export default function ConfidenceBreakdownModal({ isOpen, onClose, zoneId = 'zo
               {/* Overall Summary Cards */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-4 rounded-xl bg-cyan-950/30 border border-cyan-500/30">
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 font-semibold">Evidence Confidence</div>
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 font-semibold">Evidence Confidence Index</div>
                   <div className="flex items-baseline gap-2 mt-1">
-                    <span className="text-2xl font-bold font-mono text-cyan-300">{data.confidence.overall_confidence_pct}%</span>
+                    <span className="text-2xl font-bold font-mono text-cyan-300">{data.confidence.overall_confidence_pct} / 100</span>
                     <span className="text-xs font-semibold px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300">{data.confidence.confidence_level}</span>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1">Grounded in multi-sensor authoritative telemetry feeds.</p>
+                  <p className="text-[11px] text-slate-400 mt-1">ORCA confidence index reflects evidence completeness, source agreement and data quality. It is not a calibrated probability of correctness.</p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/30">

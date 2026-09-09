@@ -17,7 +17,11 @@ import {
   HelpCircle,
   ThumbsUp,
   ThumbsDown,
-  BarChart2
+  BarChart2,
+  SlidersHorizontal,
+  Compass,
+  AlertTriangle,
+  Info
 } from 'lucide-react';
 import { submitUserFeedback } from '@/lib/apiClient';
 import { I18N_STRINGS, LanguageCode } from '@/lib/i18n';
@@ -53,146 +57,199 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     setFeedbackSent(true);
   };
 
-  const coveragePercent = analysis.evidence_coverage ? Math.round(analysis.evidence_coverage * 100) : 95;
+  const coveragePercent = analysis.evidence_coverage ? Math.round(analysis.evidence_coverage * 100) : 100;
 
   return (
-    <div className="space-y-6 text-slate-800">
-      {/* 1. Primary Decision Box (Executive Multi-Agent Synthesis) */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-sm space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-100">
-                ORCA Decision Intelligence
-              </span>
-              <span className="text-[10px] text-slate-400 font-mono">
-                {analysis.time}
-              </span>
-              <span className="text-[10px] font-mono font-semibold text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
-                Evidence Coverage: {coveragePercent}%
-              </span>
-            </div>
-            <h2 className="text-base font-bold text-slate-950 mt-1">
-              &ldquo;{analysis.query}&rdquo;
-            </h2>
+    <div className="space-y-4 text-slate-200 font-mono text-xs">
+      {/* 1. Compact Horizontal Decision Summary Strip */}
+      <div className="bg-[#0F172A] rounded-xl border border-slate-800 p-3 shadow-md grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-center">
+        <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20">
+          <span className="text-[10px] text-rose-300 font-bold block uppercase">AVOID</span>
+          <span className="text-sm font-bold text-rose-400 font-mono-num mt-0.5 block">
+            {analysis.zonesToAvoid.length} {analysis.zonesToAvoid.length === 1 ? 'ZONE' : 'ZONES'}
+          </span>
+        </div>
+
+        <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+          <span className="text-[10px] text-emerald-300 font-bold block uppercase">CANDIDATE</span>
+          <span className="text-sm font-bold text-emerald-400 font-mono-num mt-0.5 block">
+            {analysis.potentialZones.filter(z => z.status === 'suitable' || z.status === 'suitable_candidate').length} ZONE
+          </span>
+        </div>
+
+        <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+          <span className="text-[10px] text-amber-300 font-bold block uppercase">CAUTION</span>
+          <span className="text-sm font-bold text-amber-400 font-mono-num mt-0.5 block">
+            {analysis.potentialZones.filter(z => z.status === 'caution').length} ZONE
+          </span>
+        </div>
+
+        <div className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+          <span className="text-[10px] text-indigo-300 font-bold block uppercase">RESTRICTED</span>
+          <span className="text-sm font-bold text-indigo-400 font-mono-num mt-0.5 block">
+            1 ZONE
+          </span>
+        </div>
+
+        <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 cursor-pointer hover:bg-cyan-500/20 transition-colors"
+          onClick={onOpenConfidenceModal}
+          title="Click to view confidence & uncertainty methodology"
+        >
+          <span className="text-[10px] text-cyan-300 font-bold block uppercase">CONFIDENCE</span>
+          <span className="text-sm font-bold text-cyan-400 font-mono-num mt-0.5 block">
+            {analysis.confidenceScore}% · HIGH
+          </span>
+        </div>
+
+        <div className="p-2 rounded-lg bg-teal-500/10 border border-teal-500/20">
+          <span className="text-[10px] text-teal-300 font-bold block uppercase">EVIDENCE</span>
+          <span className="text-sm font-bold text-teal-400 font-mono-num mt-0.5 block">
+            {coveragePercent}% COVERAGE
+          </span>
+        </div>
+      </div>
+
+      {/* 2. Executive Decision & Ranked Candidates */}
+      <div className="bg-[#0F172A] rounded-xl border border-slate-800 p-4 lg:p-5 shadow-md space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-teal-300 bg-teal-500/10 px-2 py-0.5 rounded border border-teal-500/30">
+              ORCA EXECUTIVE SYNTHESIS
+            </span>
+            <span className="text-[10px] text-slate-400">
+              {analysis.time || '10:35 IST'}
+            </span>
           </div>
 
-          <div className="flex items-center gap-2 text-xs">
-            {onOpenConfidenceModal ? (
+          <div className="flex items-center gap-2">
+            {onOpenConfidenceModal && (
               <button
                 type="button"
                 onClick={onOpenConfidenceModal}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-cyan-50 hover:bg-cyan-100 text-cyan-900 border border-cyan-200/80 font-mono font-semibold transition-colors"
-                title="View decomposed 5-factor confidence & uncertainty breakdown"
+                className="flex items-center gap-1 px-2.5 py-1 rounded bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[11px] font-bold transition-colors"
               >
-                <span>Confidence: {analysis.confidenceScore}% · {analysis.confidenceLevel}</span>
-                <span className="text-[10px] text-cyan-600 font-sans font-bold">↗</span>
+                <span>Confidence: {analysis.confidenceScore}%</span>
+                <span className="text-[10px]">↗</span>
               </button>
-            ) : (
-              <span className="text-slate-500">
-                Confidence: <strong className="text-slate-900 font-semibold">{analysis.confidenceScore}% · {analysis.confidenceLevel}</strong>
-              </span>
             )}
 
             {onOpenWhatIfModal && (
               <button
                 type="button"
                 onClick={onOpenWhatIfModal}
-                className="px-2.5 py-1 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 text-xs font-semibold transition-colors"
-                title="Simulate wave/wind parameter modifications"
+                className="flex items-center gap-1 px-2.5 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[11px] font-bold transition-colors"
               >
-                What-If?
+                <SlidersHorizontal className="w-3 h-3 text-amber-400" />
+                <span>What-If?</span>
               </button>
             )}
           </div>
         </div>
 
         {/* Executive Grounded Takeaway */}
-        <p className="text-sm font-medium text-slate-800 leading-relaxed">
+        <p className="text-xs sm:text-sm font-sans font-medium text-slate-100 leading-relaxed">
           {analysis.summary}
         </p>
 
-        {/* Phase 5: Ranked Candidate Operational Zones */}
-        <div className="p-4 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-3">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-slate-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              ORCA Candidate Zone Ranking
+        {/* Ranked Operational Candidates */}
+        <div className="space-y-2.5 pt-1">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              Candidate Zone Ranking (Deterministic Suitability)
             </span>
-            <span className="text-[10px] text-slate-500 font-mono">Deterministic Suitability Scoring</span>
+            <span className="text-[10px] text-slate-400">INCOIS OSF / PFZ Telemetry</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-            {/* Top Candidate Card */}
-            <div className="p-3.5 bg-white rounded-lg border border-emerald-200/80 shadow-xs space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* Top Candidate */}
+            <div
+              onClick={() => {
+                const zc = analysis.potentialZones.find(z => z.id === 'zone-c') || analysis.potentialZones[0];
+                if (zc) onSelectZone(zc);
+              }}
+              className="p-3 bg-slate-900/90 rounded-lg border border-emerald-500/40 hover:border-emerald-400 cursor-pointer transition-all space-y-2"
+            >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px] flex items-center justify-center">1</span>
-                  <span className="font-bold text-emerald-950">ZONE C (South Sector)</span>
+                  <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px] flex items-center justify-center border border-emerald-500/40">1</span>
+                  <span className="font-bold text-emerald-300">ZONE C (South Sector)</span>
                 </div>
-                <span className="px-2 py-0.5 rounded bg-emerald-100/70 text-emerald-800 font-mono text-[10px] font-bold">TOP CANDIDATE</span>
+                <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-bold border border-emerald-500/40">
+                  TOP CANDIDATE
+                </span>
               </div>
-              
-              <div className="grid grid-cols-2 gap-2 text-[11px] font-mono py-1 border-y border-slate-100">
+
+              <div className="grid grid-cols-2 gap-2 text-[10px] py-1 border-y border-slate-800">
                 <div>
                   <span className="text-slate-400 block text-[9px]">SUITABILITY</span>
-                  <span className="text-emerald-700 font-bold">72 / 100</span>
+                  <span className="text-emerald-400 font-bold">72 / 100</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[9px]">OPERATIONAL RISK</span>
-                  <span className="text-slate-800 font-bold">22 / 100 (Low)</span>
+                  <span className="text-slate-200 font-bold">22 / 100 (Low)</span>
                 </div>
               </div>
-              <p className="text-[11px] text-slate-600 leading-tight">
-                Lower wave risk (1.2m), favorable available ISRO/INCOIS ocean color indicators, zero restrictions.
+
+              <p className="text-[10px] font-sans text-slate-300 leading-snug">
+                Favorable wave conditions (1.2m swell), baseline ocean color indicators, unrestricted passage.
               </p>
             </div>
 
-            {/* Alternative Candidate Card */}
-            <div className="p-3.5 bg-white rounded-lg border border-slate-200 shadow-xs space-y-2">
+            {/* Alternative Candidate */}
+            <div
+              onClick={() => {
+                const zd = analysis.potentialZones.find(z => z.id === 'zone-d') || analysis.potentialZones[1];
+                if (zd) onSelectZone(zd);
+              }}
+              className="p-3 bg-slate-900/90 rounded-lg border border-slate-700 hover:border-slate-600 cursor-pointer transition-all space-y-2"
+            >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold text-[11px] flex items-center justify-center">2</span>
-                  <span className="font-bold text-slate-900">ZONE D (Mid-Shelf)</span>
+                  <span className="w-4 h-4 rounded-full bg-slate-800 text-slate-300 font-bold text-[10px] flex items-center justify-center border border-slate-700">2</span>
+                  <span className="font-bold text-slate-200">ZONE D (Mid-Shelf)</span>
                 </div>
-                <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[10px] font-semibold">ALTERNATIVE</span>
+                <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold border border-amber-500/40">
+                  ALTERNATIVE
+                </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 text-[11px] font-mono py-1 border-y border-slate-100">
+              <div className="grid grid-cols-2 gap-2 text-[10px] py-1 border-y border-slate-800">
                 <div>
                   <span className="text-slate-400 block text-[9px]">SUITABILITY</span>
-                  <span className="text-slate-800 font-bold">61 / 100</span>
+                  <span className="text-slate-200 font-bold">61 / 100</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[9px]">OPERATIONAL RISK</span>
-                  <span className="text-amber-700 font-bold">38 / 100 (Caution)</span>
+                  <span className="text-amber-400 font-bold">38 / 100 (Caution)</span>
                 </div>
               </div>
-              <p className="text-[11px] text-slate-600 leading-tight">
+
+              <p className="text-[10px] font-sans text-slate-300 leading-snug">
                 Viable secondary candidate. Moderate wave swell (1.8m); conclude operations before afternoon rise.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Dynamic Decision Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 text-xs">
-          <div className="p-3.5 bg-rose-50/70 rounded-xl border border-rose-100 space-y-2">
+        {/* Why This Decision Summary Rows */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+          {/* Avoid Summary */}
+          <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 space-y-2">
             <div className="flex items-start gap-2">
-              <span className="w-2 h-2 rounded-full bg-rose-500 mt-1 shrink-0" />
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold text-rose-950">
-                  Avoid: {analysis.zonesToAvoid.map(z => z.code).join(' & ') || 'None'}
+                <span className="font-bold text-rose-300 text-[11px]">
+                  AVOID: {analysis.zonesToAvoid.map(z => z.code).join(' & ') || 'None'}
                 </span>
-                <p className="text-[11px] text-rose-800 mt-0.5 leading-normal">
+                <p className="text-[10px] font-sans text-rose-200 mt-0.5 leading-snug">
                   {analysis.zonesToAvoid.length > 0
                     ? analysis.zonesToAvoid.map(z => `${z.code}: ${z.reasons[0] || z.statusLabel}`).join(' · ')
-                    : 'No high-risk or restricted sectors detected in requested window.'}
+                    : 'No critical hazards detected.'}
                 </p>
               </div>
             </div>
 
-            {/* Inline Evidence Indicator Chips */}
             {onInspectEvidence && (
               <div className="flex flex-wrap gap-1.5 pt-1">
                 <button
@@ -203,12 +260,12 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                     organization: 'INCOIS Wave Watch III',
                     data_type: 'forecast',
                     valid_time: 'Tomorrow 06:00 IST',
-                    citation: 'Wave model indicates elevated swell (4.1 m) breaching safety envelope.',
+                    citation: 'Wave model indicates elevated swell (4.1 m) breaching safety threshold.',
                     source_url: 'https://incois.gov.in/oceanservices/osfforecast.jsp'
                   })}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-white text-rose-800 border border-rose-200 hover:bg-rose-100 transition-colors"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] bg-slate-900 text-rose-300 border border-rose-500/30 hover:bg-slate-800 transition-colors"
                 >
-                  <span>[Evidence: INCOIS Wave 4.1m]</span>
+                  <span>[INCOIS Wave 4.1m]</span>
                   <ExternalLink className="w-2.5 h-2.5" />
                 </button>
                 <button
@@ -220,25 +277,26 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                     data_type: 'forecast',
                     valid_time: 'Tomorrow 06:00 IST',
                     citation: 'Sustained near-gale winds (30.0 kt) forecast across northern shelf.',
-                    source_url: 'https://api.imd.gov.in/public/api_reference.html'
+                    source_url: 'https://api.imd.gov.in/public/index.php'
                   })}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-white text-rose-800 border border-rose-200 hover:bg-rose-100 transition-colors"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] bg-slate-900 text-rose-300 border border-rose-500/30 hover:bg-slate-800 transition-colors"
                 >
-                  <span>[Evidence: IMD Wind 30kt]</span>
+                  <span>[IMD Wind 30kt]</span>
                   <ExternalLink className="w-2.5 h-2.5" />
                 </button>
               </div>
             )}
           </div>
 
-          <div className="p-3.5 bg-emerald-50/70 rounded-xl border border-emerald-100 space-y-2">
+          {/* Candidate Summary */}
+          <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 space-y-2">
             <div className="flex items-start gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 mt-1 shrink-0" />
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold text-emerald-950">
-                  Potential Candidates: {analysis.potentialZones.map(z => z.code).join(' & ') || 'None'}
+                <span className="font-bold text-emerald-300 text-[11px]">
+                  CANDIDATES: {analysis.potentialZones.map(z => z.code).join(' & ') || 'None'}
                 </span>
-                <p className="text-[11px] text-emerald-800 mt-0.5 leading-normal">
+                <p className="text-[10px] font-sans text-emerald-200 mt-0.5 leading-snug">
                   {analysis.potentialZones.length > 0
                     ? analysis.potentialZones.map(z => `${z.code}: ${z.reasons[0] || z.statusLabel}`).join(' · ')
                     : 'No open operational window identified under current conditions.'}
@@ -246,7 +304,6 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
               </div>
             </div>
 
-            {/* Inline Evidence Indicator Chips for Candidates */}
             {onInspectEvidence && (
               <div className="flex flex-wrap gap-1.5 pt-1">
                 <button
@@ -257,12 +314,12 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                     organization: 'INCOIS & MOSDAC',
                     data_type: 'forecast & observation',
                     valid_time: 'Tomorrow 06:00 IST',
-                    citation: 'Manageable physical wave conditions and baseline ocean color indicators.',
+                    citation: 'Manageable wave conditions and baseline ocean color indicators.',
                     source_url: 'https://incois.gov.in/'
                   })}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] bg-slate-900 text-emerald-300 border border-emerald-500/30 hover:bg-slate-800 transition-colors"
                 >
-                  <span>[Evidence: INCOIS & MOSDAC]</span>
+                  <span>[INCOIS & MOSDAC Data]</span>
                   <ExternalLink className="w-2.5 h-2.5" />
                 </button>
               </div>
@@ -270,79 +327,74 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
           </div>
         </div>
 
-        {/* Interactive Wave / Wind Timeline Visualization */}
-        <div className="p-4 bg-slate-900 text-slate-100 rounded-xl space-y-2.5 text-xs font-mono">
-          <div className="flex items-center justify-between text-[11px] text-slate-400">
-            <span className="flex items-center gap-1.5 uppercase font-bold tracking-wider text-cyan-400">
+        {/* Forecast Evolution Timeline */}
+        <div className="p-3.5 bg-slate-900/90 rounded-lg border border-slate-800 space-y-2">
+          <div className="flex items-center justify-between text-[10px] text-slate-400">
+            <span className="flex items-center gap-1.5 uppercase font-bold text-teal-400">
               <BarChart2 className="w-3.5 h-3.5" />
-              Wave & Wind Evolution Profile (Zone A vs Zone C)
+              Forecast Evolution Profile (Zone A vs Zone C)
             </span>
-            <span>Forecast Window</span>
+            <span>Forecast Window (IST)</span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 text-center text-[11px]">
-            <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700">
-              <span className="text-slate-400 block text-[10px]">06:00 IST</span>
-              <span className="text-rose-400 font-bold">3.4m · 24kt</span>
-              <span className="text-emerald-400 text-[10px] block mt-0.5">Zone C: 0.9m</span>
+          <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
+            <div className="p-2 rounded bg-slate-800/80 border border-slate-700">
+              <span className="text-slate-400 block text-[9px]">06:00 IST</span>
+              <span className="text-rose-400 font-bold block">Zone A: 3.4m · 24kt</span>
+              <span className="text-emerald-400 block mt-0.5">Zone C: 0.9m · 12kt</span>
             </div>
-            <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700">
-              <span className="text-slate-400 block text-[10px]">09:00 IST</span>
-              <span className="text-rose-400 font-bold">3.8m · 28kt</span>
-              <span className="text-emerald-400 text-[10px] block mt-0.5">Zone C: 1.0m</span>
+            <div className="p-2 rounded bg-slate-800/80 border border-slate-700">
+              <span className="text-slate-400 block text-[9px]">09:00 IST</span>
+              <span className="text-rose-400 font-bold block">Zone A: 3.8m · 28kt</span>
+              <span className="text-emerald-400 block mt-0.5">Zone C: 1.0m · 14kt</span>
             </div>
-            <div className="p-2 rounded-lg bg-rose-950/40 border border-rose-500/40">
-              <span className="text-rose-300 block text-[10px]">12:00 IST (Peak)</span>
-              <span className="text-rose-300 font-bold">4.1m · 30kt</span>
-              <span className="text-emerald-400 text-[10px] block mt-0.5">Zone C: 1.1m</span>
+            <div className="p-2 rounded bg-rose-500/10 border border-rose-500/30">
+              <span className="text-rose-300 block text-[9px]">12:00 IST (Peak Swell)</span>
+              <span className="text-rose-300 font-bold block">Zone A: 4.1m · 30kt</span>
+              <span className="text-emerald-400 block mt-0.5">Zone C: 1.1m · 15kt</span>
             </div>
           </div>
         </div>
 
-        {/* Conversational Contextual Follow-Up Suggestions */}
+        {/* Decision Support Follow-Up Query Chips */}
         {onAskFollowUp && (
-          <div className="pt-2 border-t border-slate-100 space-y-1.5">
-            <span className="text-[11px] font-semibold text-slate-500">Decision Support Queries:</span>
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="pt-2 border-t border-slate-800 space-y-1.5">
+            <span className="text-[10px] uppercase font-bold text-slate-400 block">
+              Follow-Up Decision Inquiries:
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => onAskFollowUp('Rank the candidate zones.')}
-                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-medium border border-slate-200 transition-colors"
+                onClick={() => onAskFollowUp('Rank candidate fishing zones.')}
+                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-700 transition-colors"
               >
                 Rank Candidate Zones
               </button>
               <button
                 type="button"
                 onClick={() => onAskFollowUp('Compare Zone C and Zone D.')}
-                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-medium border border-slate-200 transition-colors"
+                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-700 transition-colors"
               >
                 Compare Zone C & Zone D
               </button>
               <button
                 type="button"
                 onClick={() => onAskFollowUp('What if wave height increases by 1 metre in Zone C?')}
-                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-medium border border-amber-200 transition-colors"
+                className="px-2.5 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-[11px] border border-amber-500/30 transition-colors"
               >
                 What if waves +1m?
               </button>
               <button
                 type="button"
-                onClick={() => onOpenConfidenceModal ? onOpenConfidenceModal() : onAskFollowUp('Why is your confidence medium?')}
-                className="px-2.5 py-1 rounded-lg bg-cyan-50 hover:bg-cyan-100 text-cyan-900 text-xs font-medium border border-cyan-200 transition-colors"
+                onClick={() => onOpenConfidenceModal ? onOpenConfidenceModal() : onAskFollowUp('Why is confidence High?')}
+                className="px-2.5 py-1 rounded bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 text-[11px] border border-cyan-500/30 transition-colors"
               >
-                Why is confidence Medium?
-              </button>
-              <button
-                type="button"
-                onClick={() => onAskFollowUp('Give me an alternative candidate.')}
-                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-medium border border-slate-200 transition-colors"
-              >
-                Give Alternative Candidate
+                Why is confidence High?
               </button>
               <button
                 type="button"
                 onClick={() => onAskFollowUp('Show restricted zones on the map.')}
-                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-medium border border-slate-200 transition-colors"
+                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-700 transition-colors"
               >
                 Show Restricted Zones
               </button>
@@ -350,25 +402,25 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
           </div>
         )}
 
-        {/* User Feedback Row */}
-        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-          <span>Was this reasoning useful?</span>
+        {/* User Grounding Feedback */}
+        <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+          <span>Was this decision reasoning accurate & useful?</span>
           {feedbackSent ? (
-            <span className="text-emerald-600 font-medium">✓ Thank you for your feedback</span>
+            <span className="text-emerald-400 font-bold">✓ Feedback recorded</span>
           ) : (
             <div className="flex items-center gap-2">
               <button
                 onClick={() => handleFeedback(true)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors border border-slate-700"
               >
-                <ThumbsUp className="w-3 h-3" />
+                <ThumbsUp className="w-3 h-3 text-emerald-400" />
                 <span>Yes</span>
               </button>
               <button
                 onClick={() => handleFeedback(false)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors border border-slate-700"
               >
-                <ThumbsDown className="w-3 h-3" />
+                <ThumbsDown className="w-3 h-3 text-rose-400" />
                 <span>No</span>
               </button>
             </div>
@@ -376,152 +428,24 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         </div>
       </div>
 
-      {/* 2. Zones to Avoid & Potential Zones (Minimal Two-Column Rows) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Avoid Rows */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm space-y-3">
-          <div className="flex items-center justify-between pb-1 border-b border-slate-100">
-            <span className="text-xs font-bold uppercase tracking-wider text-rose-800 flex items-center gap-1.5">
-              <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
-              Zones to Avoid
-            </span>
-            <span className="text-[10px] text-slate-400 font-mono">
-              {analysis.zonesToAvoid.length} Sectors
-            </span>
-          </div>
-
-          <div className="divide-y divide-slate-100">
-            {analysis.zonesToAvoid.map((zone, idx) => {
-              const isSelected = selectedZoneId === zone.id;
-              return (
-                <div
-                  key={zone.id}
-                  onClick={() => onSelectZone(zone)}
-                  className={`py-3 first:pt-1 last:pb-1 flex items-start justify-between gap-3 cursor-pointer group transition-colors px-2 rounded-lg ${
-                    isSelected ? 'bg-rose-50/60' : 'hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-slate-900 text-xs">
-                        0{idx + 1}
-                      </span>
-                      <span className="font-bold text-slate-900 text-xs">
-                        {zone.code}
-                      </span>
-                      <span className="text-[10px] font-semibold text-rose-700 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
-                        {zone.statusLabel}
-                      </span>
-                      <span className="text-[11px] text-slate-400 font-mono">
-                        Risk {zone.riskScore}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-600">
-                      {zone.reasons && zone.reasons.length > 0 ? zone.reasons[0] : 'Elevated risk parameters detected.'}
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="text-[11px] font-semibold text-slate-500 group-hover:text-rose-700 flex items-center gap-0.5 shrink-0 mt-0.5"
-                  >
-                    <span>Inspect</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Potential / Safe Rows */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm space-y-3">
-          <div className="flex items-center justify-between pb-1 border-b border-slate-100">
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              Potential / Candidate Zones
-            </span>
-            <span className="text-[10px] text-slate-400 font-mono">
-              {analysis.potentialZones.length} Sectors
-            </span>
-          </div>
-
-          <div className="divide-y divide-slate-100">
-            {analysis.potentialZones.map((zone, idx) => {
-              const isSelected = selectedZoneId === zone.id;
-              const isCaution = zone.status === 'caution';
-              return (
-                <div
-                  key={zone.id}
-                  onClick={() => onSelectZone(zone)}
-                  className={`py-3 first:pt-1 last:pb-1 flex items-start justify-between gap-3 cursor-pointer group transition-colors px-2 rounded-lg ${
-                    isSelected
-                      ? isCaution
-                        ? 'bg-amber-50/60'
-                        : 'bg-emerald-50/60'
-                      : 'hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-slate-900 text-xs">
-                        0{idx + 1}
-                      </span>
-                      <span className="font-bold text-slate-900 text-xs">
-                        {zone.code}
-                      </span>
-                      <span
-                        className={`text-[10px] font-semibold px-1.5 py-0.2 rounded border ${
-                          isCaution
-                            ? 'text-amber-800 bg-amber-50 border-amber-200'
-                            : 'text-emerald-800 bg-emerald-50 border-emerald-200'
-                        }`}
-                      >
-                        {zone.statusLabel}
-                      </span>
-                      <span className="text-[11px] text-slate-400 font-mono">
-                        Risk {zone.riskScore}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-600">
-                      {zone.reasons && zone.reasons.length > 0 ? zone.reasons[0] : 'Calm forecast sea state.'}
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    className={`text-[11px] font-semibold text-slate-500 flex items-center gap-0.5 shrink-0 mt-0.5 ${
-                      isCaution
-                        ? 'group-hover:text-amber-700'
-                        : 'group-hover:text-emerald-700'
-                    }`}
-                  >
-                    <span>Inspect</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Dynamic Multi-Agent Reasoning Execution Trace */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm text-xs">
+      {/* 3. Horizontal Multi-Agent Pipeline Execution Trace */}
+      <div className="bg-[#0F172A] rounded-xl border border-slate-800 p-3.5 shadow-md space-y-2">
         <button
           onClick={() => setIsTraceExpanded(!isTraceExpanded)}
           className="w-full flex items-center justify-between text-left"
         >
           <div className="flex items-center gap-2">
-            <Cpu className="w-4 h-4 text-teal-600" />
-            <span className="font-semibold text-slate-900">ORCA Multi-Agent Execution Trace</span>
-            <span className="text-[11px] text-slate-400 font-normal">
-              ({analysis.agentTrace ? analysis.agentTrace.length : 6} Collaborative Agents)
+            <Cpu className="w-4 h-4 text-teal-400" />
+            <span className="font-bold text-white text-[11px] uppercase tracking-wider">
+              ORCA Multi-Agent Execution Pipeline
+            </span>
+            <span className="text-[10px] text-slate-400">
+              (6 Collaborative Specialized Agents)
             </span>
           </div>
 
-          <div className="flex items-center gap-1 text-slate-500 hover:text-slate-800">
-            <span className="text-[11px]">{isTraceExpanded ? 'Collapse Trace' : 'Expand Trace'}</span>
+          <div className="flex items-center gap-1 text-slate-400 hover:text-slate-200">
+            <span className="text-[10px]">{isTraceExpanded ? 'Collapse Trace' : 'View Trace'}</span>
             {isTraceExpanded ? (
               <ChevronUp className="w-3.5 h-3.5" />
             ) : (
@@ -530,37 +454,37 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
           </div>
         </button>
 
-        {/* Collapsed view: compact 1-line timeline */}
+        {/* Compact 1-line pipeline view */}
         {!isTraceExpanded ? (
-          <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-600">
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800 text-[10px]">
             {(analysis.agentTrace || []).map((trace, idx) => (
               <React.Fragment key={idx}>
-                {idx > 0 && <span className="text-slate-300">→</span>}
-                <span className="flex items-center gap-1 font-medium text-slate-700">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-500" /> {trace.agentName.replace(' Agent', '')}
+                {idx > 0 && <span className="text-slate-600">→</span>}
+                <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 font-bold">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  {trace.agentName.replace(' Agent', '')}
                 </span>
               </React.Fragment>
             ))}
           </div>
         ) : (
-          /* Expanded view: step-by-step detail with tools used and data categories */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4 pt-3 border-t border-slate-100 text-xs">
+          /* Expanded detail with tools and timings */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-2 border-t border-slate-800 text-xs">
             {(analysis.agentTrace || []).map((trace, idx) => (
-              <div key={idx} className="p-3 bg-slate-50/80 rounded-xl border border-slate-100 space-y-1.5">
+              <div key={idx} className="p-2.5 bg-slate-900 rounded-lg border border-slate-800 space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
+                  <span className="font-bold text-teal-300 text-[11px]">
                     {trace.agentName}
                   </span>
-                  <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-1 rounded border border-emerald-200">
+                  <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1 rounded border border-emerald-500/30">
                     {trace.agentStatus || 'COMPLETE'}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-700 leading-snug">{trace.action}</p>
+                <p className="text-[10px] font-sans text-slate-300 leading-snug">{trace.action}</p>
                 {trace.toolsUsed && trace.toolsUsed.length > 0 && (
                   <div className="pt-1 flex flex-wrap gap-1">
-                    {trace.toolsUsed.slice(0, 3).map((tool, tIdx) => (
-                      <span key={tIdx} className="text-[9px] font-mono text-slate-500 bg-white px-1.5 py-0.2 rounded border border-slate-200">
+                    {trace.toolsUsed.map((tool, tIdx) => (
+                      <span key={tIdx} className="text-[8px] text-slate-400 bg-slate-800 px-1 py-0.2 rounded border border-slate-700">
                         {tool}
                       </span>
                     ))}

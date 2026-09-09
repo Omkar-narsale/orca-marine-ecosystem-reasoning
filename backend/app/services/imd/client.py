@@ -45,74 +45,9 @@ class IMDConnector(MarineDataConnector):
         raise httpx.HTTPError(f"Failed after {max_retries} retries to connect to {url}")
 
     async def health_check(self) -> SourceHealthSchema:
-        start_t = time.perf_counter()
-        now_ist = datetime.now().strftime("%d %b %Y %H:%M IST")
-        self.last_checked = now_ist
-        
-        try:
-            res = await self._fetch_with_retry(settings.IMD_PUBLIC_URL, max_retries=1)
-            latency = (time.perf_counter() - start_t) * 1000.0
-            self.last_latency_ms = latency
-            self.last_error = None
-            
-            is_ok = res.status_code == 200
-            if is_ok:
-                self.last_successful_retrieval = now_ist
-            
-            log_source_request(
-                source_name="IMD",
-                endpoint=settings.IMD_PUBLIC_URL,
-                method="GET",
-                status_code=res.status_code,
-                latency_ms=latency
-            )
-            
-            status_label = "HEALTHY" if is_ok else "DEGRADED"
-            return SourceHealthSchema(
-                source_id=self.source_id,
-                name=self.name,
-                organization=self.organization,
-                status="Connected / Live" if is_ok else "Degraded",
-                health_state=status_label,
-                endpoint=settings.IMD_PUBLIC_URL,
-                last_checked=now_ist,
-                last_successful_retrieval=self.last_successful_retrieval,
-                last_successful_fetch=self.last_successful_retrieval,
-                response_latency_ms=round(latency, 1),
-                latency_ms=round(latency, 1),
-                data_freshness="6-hourly bulletin (Recent)",
-                is_live=is_ok,
-                error=None,
-                notes="Official IMD Public API and coastal marine bulletins reachable."
-            )
-        except Exception as e:
-            latency = (time.perf_counter() - start_t) * 1000.0
-            self.last_latency_ms = latency
-            self.last_error = str(e)
-            log_source_request(
-                source_name="IMD",
-                endpoint=settings.IMD_PUBLIC_URL,
-                method="GET",
-                latency_ms=latency,
-                error=str(e)
-            )
-            return SourceHealthSchema(
-                source_id=self.source_id,
-                name=self.name,
-                organization=self.organization,
-                status="Degraded / Offline",
-                health_state="DEGRADED",
-                endpoint=settings.IMD_PUBLIC_URL,
-                last_checked=now_ist,
-                last_successful_retrieval=self.last_successful_retrieval,
-                last_successful_fetch=self.last_successful_retrieval,
-                response_latency_ms=round(latency, 1),
-                latency_ms=round(latency, 1),
-                data_freshness="Cached bulletin baseline",
-                is_live=False,
-                error=f"{type(e).__name__}: {str(e)}",
-                notes=f"Connection failure to IMD Public API: {type(e).__name__}. Graceful cache fallback active."
-            )
+        from backend.app.services.imd.health import imd_health_inspector
+        return await imd_health_inspector.check_health()
+
 
     async def get_data(
         self,

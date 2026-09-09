@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ArrowUpRight } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 
 interface ViewSourceLinkProps {
   sourceUrl?: string;
@@ -16,8 +16,8 @@ export const ViewSourceLink: React.FC<ViewSourceLinkProps> = ({
 }) => {
   if (!sourceUrl || !sourceUrl.trim()) {
     return (
-      <span className="text-[11px] text-slate-400 italic">
-        Source link unavailable
+      <span className="text-[10px] text-slate-500 italic font-mono">
+        Source unavailable
       </span>
     );
   }
@@ -27,11 +27,11 @@ export const ViewSourceLink: React.FC<ViewSourceLinkProps> = ({
       href={sourceUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className={`text-teal-700 hover:text-teal-900 font-medium inline-flex items-center gap-0.5 hover:underline cursor-pointer transition-colors text-xs ${className}`}
+      className={`text-teal-400 hover:text-teal-300 font-mono font-bold inline-flex items-center gap-1 cursor-pointer transition-colors text-xs ${className}`}
       title={`Open official source in new tab (${sourceUrl})`}
     >
       <span>{label}</span>
-      <ArrowUpRight className="w-3 h-3 shrink-0" />
+      <ExternalLink className="w-2.5 h-2.5 shrink-0" />
     </a>
   );
 };

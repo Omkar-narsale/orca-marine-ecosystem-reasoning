@@ -4,15 +4,35 @@ from backend.app.schemas.agentic import ConversationContext, AgenticQueryRespons
 
 class ConversationManager:
     """
-    Stateful Conversation & Multilingual Manager for ORCA.
-    Provides session persistence, evidence coverage metrics, and multilingual translations.
+    Stateful Conversation & Session Manager for ORCA.
+    Provides session persistence, thread history, evidence coverage metrics, and multilingual translations.
     """
     def __init__(self):
-        # In-memory session store: session_id -> list of messages
+        # In-memory session store: session_id -> metadata & list of messages
         self._conversations: Dict[str, List[Dict[str, Any]]] = {}
+        self._session_metadata: Dict[str, Dict[str, Any]] = {}
 
     def get_conversation_history(self, session_id: str) -> List[Dict[str, Any]]:
         return self._conversations.get(session_id, [])
+
+    def get_session_metadata(self, session_id: str) -> Optional[Dict[str, Any]]:
+        return self._session_metadata.get(session_id)
+
+    def get_all_sessions(self) -> List[Dict[str, Any]]:
+        sessions = []
+        for sid, meta in self._session_metadata.items():
+            msgs = self._conversations.get(sid, [])
+            sessions.append({
+                "session_id": sid,
+                "title": meta.get("title", "Maritime Inquiry"),
+                "created_at": meta.get("created_at", "Today"),
+                "last_updated": meta.get("last_updated", "Today"),
+                "message_count": len(msgs),
+                "language": meta.get("language", "en"),
+                "last_query": meta.get("last_query", "")
+            })
+        sessions.sort(key=lambda s: s.get("last_updated", ""), reverse=True)
+        return sessions
 
     def record_interaction(
         self,
@@ -23,32 +43,59 @@ class ConversationManager:
     ):
         if session_id not in self._conversations:
             self._conversations[session_id] = []
+            
+            # Generate human-readable title from first query
+            title = user_query[:45].strip()
+            if len(user_query) > 45:
+                title += "..."
+            self._session_metadata[session_id] = {
+                "title": title.capitalize(),
+                "created_at": datetime.now().strftime("%d %b · %H:%M"),
+                "last_updated": datetime.now().strftime("%d %b · %H:%M"),
+                "language": language,
+                "last_query": user_query
+            }
+        else:
+            self._session_metadata[session_id]["last_updated"] = datetime.now().strftime("%d %b · %H:%M")
+            self._session_metadata[session_id]["last_query"] = user_query
 
         timestamp = datetime.now().strftime("%H:%M IST")
 
         # Record user message
         self._conversations[session_id].append({
-            "id": f"msg_{len(self._conversations[session_id])+1}",
+            "id": f"msg_u_{len(self._conversations[session_id])+1}",
             "role": "user",
             "content": user_query,
             "timestamp": timestamp,
             "language": language
         })
 
-        # Record assistant message with structured decision & evidence
+        # Record assistant message with full conversational response & structured analysis
         self._conversations[session_id].append({
-            "id": f"msg_{len(self._conversations[session_id])+1}",
+            "id": f"msg_a_{len(self._conversations[session_id])+1}",
             "role": "assistant",
             "content": agent_response.summary,
             "decision": agent_response.decision.model_dump() if agent_response.decision else {},
-            "confidence": f"{agent_response.confidenceScore}% · {agent_response.confidenceLevel}",
+            "confidenceScore": agent_response.confidenceScore,
+            "confidenceLevel": agent_response.confidenceLevel,
             "evidence_count": len(agent_response.evidenceGraph),
             "focused_zone_id": agent_response.focusedZoneId,
+            "zonesToAvoid": agent_response.zonesToAvoid,
+            "potentialZones": agent_response.potentialZones,
+            "all_zones": agent_response.all_zones,
+            "filterMode": agent_response.filterMode,
             "timestamp": timestamp,
             "language": language,
+            "request_id": agent_response.request_id,
             "limitations": agent_response.limitations,
             "agent_trace_count": len(agent_response.agentTrace)
         })
+
+    def clear_session(self, session_id: str):
+        if session_id in self._conversations:
+            del self._conversations[session_id]
+        if session_id in self._session_metadata:
+            del self._session_metadata[session_id]
 
     def calculate_evidence_coverage(
         self,
@@ -70,19 +117,16 @@ class ConversationManager:
         supported_claims = 0
 
         for z in (evaluated_zones or []):
-            # Check wave
             if z.get("wave_hazard", {}).get("status") == "AVAILABLE":
                 total_claims += 1
                 if any("wave" in getattr(n, "parameter", "") or "wave" in str(n) for n in (evidence_nodes or [])):
                     supported_claims += 1
 
-            # Check wind
             if z.get("wind_hazard", {}).get("status") == "AVAILABLE":
                 total_claims += 1
                 if any("wind" in getattr(n, "parameter", "") or "wind" in str(n) for n in (evidence_nodes or [])):
                     supported_claims += 1
 
-            # Check geofence
             total_claims += 1
             if any("GIS_CADASTRE" in getattr(n, "source_id", "") or "cadastre" in str(n).lower() for n in (evidence_nodes or [])):
                 supported_claims += 1

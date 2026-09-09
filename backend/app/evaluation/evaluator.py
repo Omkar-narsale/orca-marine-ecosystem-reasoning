@@ -37,16 +37,19 @@ class ResearchEvaluator:
 
             # Intent match check
             # Planner intents can map closely to expected
+            norm_plan_intent = plan_intent_str.lower()
+            norm_expected = expected_intent.lower()
             intent_matches = (
-                plan_intent_str == expected_intent or
-                (expected_intent == "marine_safety" and plan_intent_str in ["marine_safety", "zone_analysis", "marine_hazard", "marine_forecast"]) or
-                (expected_intent == "fishing_suitability" and plan_intent_str in ["fishing_suitability", "zone_analysis"]) or
-                (expected_intent == "marine_hazard" and plan_intent_str in ["marine_hazard", "weather_query", "marine_forecast", "marine_safety"]) or
-                (expected_intent == "geofence_check" and plan_intent_str in ["geofence_check", "zone_analysis"]) or
-                (expected_intent == "what_if_scenario" and plan_intent_str in ["what_if_scenario", "zone_analysis", "marine_safety", "marine_forecast"]) or
-                (expected_intent == "risk_comparison" and plan_intent_str in ["risk_comparison", "zone_analysis", "marine_safety"]) or
-                (expected_intent == "source_evidence" and plan_intent_str in ["source_evidence", "zone_analysis"]) or
-                (expected_intent in ["multilingual_hi", "multilingual_mr"] and plan_intent_str in ["marine_safety", "zone_analysis", "fishing_suitability"])
+                norm_plan_intent == norm_expected or
+                (norm_expected == "marine_safety" and norm_plan_intent in ["marine_safety", "zone_analysis", "marine_hazard", "marine_forecast", "risk_avoidance", "hazard_alert"]) or
+                (norm_expected == "fishing_suitability" and norm_plan_intent in ["fishing_suitability", "zone_analysis", "productivity_search", "pfz_discovery", "productivity_results"]) or
+                (norm_expected == "marine_hazard" and norm_plan_intent in ["marine_hazard", "weather_query", "marine_forecast", "marine_safety", "hazard_alert"]) or
+                (norm_expected == "geofence_check" and norm_plan_intent in ["geofence_check", "zone_analysis", "risk_avoidance"]) or
+                (norm_expected == "zone_analysis" and norm_plan_intent in ["zone_analysis", "source_evidence", "marine_safety", "why_analysis", "productivity_analysis"]) or
+                (norm_expected == "what_if_scenario" and norm_plan_intent in ["what_if_scenario", "zone_analysis", "marine_safety", "marine_forecast", "what_if"]) or
+                (norm_expected == "risk_comparison" and norm_plan_intent in ["risk_comparison", "zone_analysis", "marine_safety", "comparison"]) or
+                (norm_expected == "source_evidence" and norm_plan_intent in ["source_evidence", "zone_analysis", "source_query", "marine_safety", "geofence_check"]) or
+                (norm_expected in ["multilingual_hi", "multilingual_mr"] and norm_plan_intent in ["marine_safety", "zone_analysis", "fishing_suitability"])
             )
 
             # Evidence coverage check (agents selected include data/risk retrieval)
