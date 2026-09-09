@@ -16,6 +16,16 @@ def parse_temporal_window(query_text: str) -> Dict[str, Any]:
     now_ist = now_utc + ist_offset
     tomorrow_ist = now_ist + timedelta(days=1)
 
+    if any(w in normalized for w in ["declined", "productivity", "historical", "baseline", "trend", "past years", "decreased", "decline in fish", "why has fish"]):
+        return {
+            "label": "HISTORICAL_COMPARISON",
+            "start_iso": "2021-01-01T00:00:00Z",
+            "end_iso": now_utc.isoformat(),
+            "display_label": "Historical Baseline Comparison (Multi-Year Archive vs Current Period)",
+            "target_forecast_time": "Multi-Year Satellite Archive (2021-2026)",
+            "is_forecast": False
+        }
+
     if "tomorrow morning" in normalized or "morning" in normalized:
         start_ist = tomorrow_ist.replace(hour=5, minute=0, second=0, microsecond=0)
         end_ist = tomorrow_ist.replace(hour=14, minute=0, second=0, microsecond=0)
