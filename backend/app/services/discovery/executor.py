@@ -68,6 +68,10 @@ INTENT_REQUIREMENT_MATRIX: Dict[str, List[Dict[str, Any]]] = {
     ],
     "CURRENT_QUERY": [
         {"param": "CURRENT", "pref": ["INCOIS"], "req": True, "prio": ParameterPriority.CRITICAL}
+    ],
+    "PRODUCTIVITY_ANALYSIS": [
+        {"param": "CHLOROPHYLL", "pref": ["MOSDAC", "INCOIS"], "req": True, "prio": ParameterPriority.CRITICAL},
+        {"param": "SST", "pref": ["INCOIS", "MOSDAC"], "req": True, "prio": ParameterPriority.HIGH}
     ]
 }
 
