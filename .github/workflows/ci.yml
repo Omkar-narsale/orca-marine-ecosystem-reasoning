@@ -25,9 +25,10 @@ jobs:
           pip install pytest httpx
 
       - name: Run Pytest Suite
+        env:
+          PYTHONPATH: .
         run: |
-          cd backend
-          pytest -v
+          pytest backend -v
 
   frontend-build:
     name: Frontend Build & Typecheck

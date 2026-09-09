@@ -1,3 +1,14 @@
+import os
+import sys
+
+# Ensure repository root and backend directory are in sys.path for test collection
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+_backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _backend_root not in sys.path:
+    sys.path.insert(0, _backend_root)
+
 import pytest
 from backend.app.services.incois.client import incois_connector
 from backend.app.services.imd.client import imd_connector
